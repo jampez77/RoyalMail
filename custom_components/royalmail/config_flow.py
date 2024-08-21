@@ -168,6 +168,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle the re-auth step."""
         print("async_step_reauth_confirm")
+        print(user_input)
+        if user_input is not None:
+            # Here you would handle any form submission from the user
+            return self.async_create_entry(title="Re-authenticated", data=self.context["data"])
+
+        # Show a confirmation form or return directly depending on your flow
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            errors=None,
+        )
 
 
 class RoyalMailFlowHandler(config_entries.OptionsFlow):

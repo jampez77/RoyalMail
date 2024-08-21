@@ -76,7 +76,7 @@ async def get_sensors(
                          for description in MAILPIECES_SENSORS]
 
     mailPieceSensors = []
-    if len(mailPiecesCoordinator.data[CONF_MP_DETAILS]) > 0:
+    if CONF_MP_DETAILS in mailPiecesCoordinator.data and len(mailPiecesCoordinator.data[CONF_MP_DETAILS]) > 0:
 
         for mail_piece in mailPiecesCoordinator.data[CONF_MP_DETAILS]:
             mail_piece_id = mail_piece[CONF_MAILPIECE_ID]
@@ -109,7 +109,7 @@ async def async_setup_entry(
 ) -> None:
     """Setup sensors from a config entry created in the integrations UI."""
     config = hass.data[DOMAIN][entry.entry_id]
-
+    print("async_setup_entry")
     if entry.options:
         config.update(entry.options)
 
@@ -130,7 +130,7 @@ async def async_setup_platform(
 ) -> None:
     """Set up the sensor platform."""
     session = async_get_clientsession(hass)
-
+    print("async_setup_platform")
     name = config[CONF_USERNAME]
 
     sensors = await get_sensors(name, hass, config, session)

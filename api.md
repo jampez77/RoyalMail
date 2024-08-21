@@ -382,3 +382,14 @@ Only continue with this request if `Push Notification` returns a `201` response.
    "jwt": "****************************"
 }
 ```
+
+## Get Image
+
+**Request**
+
+****GET****: `https://api.royalmail.net<IMAGE-URL>`
+
+***Headers***:
+- `Authorization`: `Bearer (session access_token)`
+- `x-ibm-client-id`: `e83f49c439b0ebc0b130692bcb8b1cde`
+- `origin`: `consumermobile.royalmail.com`

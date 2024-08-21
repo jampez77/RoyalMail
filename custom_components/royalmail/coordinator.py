@@ -41,10 +41,11 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
 
-    def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str) -> None:
+    def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str, product_name: str) -> None:
         """Initialize coordinator."""
 
         super().__init__(
@@ -59,6 +60,7 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
         self.access_token = data[CONF_ACCESS_TOKEN]
         self.refresh_token = data[CONF_REFRESH_TOKEN]
         self.mail_piece_id = mail_piece_id
+        self.product_name = product_name
         self.guid = data[CONF_GUID]
         unique_id = hashlib.md5(
             data[CONF_USERNAME].encode("UTF-8")).hexdigest()
@@ -68,28 +70,38 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
         try:
-            resp = await self.session.request(
+
+            print("subscribed delete item")
+            print(PUSH_NOTIFICATION_URL.format(
+                guid=self.guid, mailPieceId=self.mail_piece_id))
+            push_notification = await self.session.request(
                 method="DELETE",
-                url=REMOVE_MAILPIECE_URL.format(
-                    guid=self.guid, ibmClientId=IBM_CLIENT_ID, mailPieceId=self.mail_piece_id),
+                url=PUSH_NOTIFICATION_URL.format(
+                    guid=self.guid, mailPieceId=self.mail_piece_id),
                 headers={
-                    CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
-                    CONF_ORIGIN: ORIGIN,
-                    "Authorization": f"Bearer {self.access_token}"
+                    ACCESS_TOKEN: self.access_token
                 },
+                json={
+                    PRODUCT_NAME: self.product_name
+                }
             )
+            print(push_notification.status)
+            if push_notification.status == 201:
+                removeMailPiece = await self.session.request(
+                    method="DELETE",
+                    url=REMOVE_MAILPIECE_URL.format(
+                        guid=self.guid, ibmClientId=IBM_CLIENT_ID, mailPieceId=self.mail_piece_id),
+                    headers={
+                        CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
+                        CONF_ORIGIN: ORIGIN,
+                        "Authorization": f"Bearer {self.access_token}"
+                    },
+                )
 
-            if resp.status == 401:
-                raise InvalidAuth("Invalid authentication credentials")
-            if resp.status == 429:
-                raise APIRatelimitExceeded("API rate limit exceeded.")
-
-            body = await resp.json()
-            # Validate response structure
-            if not isinstance(body, dict):
-                raise ValueError("Unexpected response format")
-
-            return body
+                body = await removeMailPiece.json()
+                print("remove item")
+                print(body)
+                return body
 
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed from err

@@ -115,8 +115,18 @@ async def stop_tracking_item(hass: HomeAssistant, call: ServiceCall) -> None:
 
     for entity in entities:
 
-        removeMailPieceCoordinator = RoyalMailRemoveMailPieceCoordinator(
+        mailPieceCoordinator = RoyalMailMailPieceCoordinator(
             hass, session, entry_data, reference)
+
+        await mailPieceCoordinator.async_refresh()
+
+        product_name = mailPieceCoordinator.data[CONF_MAILPIECES][CONF_SUMMARY][CONF_PRODUCT_NAME]
+
+        if mailPieceCoordinator.last_exception is not None:
+            return False
+
+        removeMailPieceCoordinator = RoyalMailRemoveMailPieceCoordinator(
+            hass, session, entry_data, reference, product_name)
 
         await removeMailPieceCoordinator.async_refresh()
 
