@@ -1,6 +1,6 @@
 # ![Logo](https://github.com/jampez77/RoyalMail/blob/main/logo.png "Royal Mail Logo") Royal Mail parcel tracking for Home Assistant
 
-This component provides details of a specified Jet2 booking and adds sensors to [Home Assistant](https://www.home-assistant.io/) which can be used in your own automations.
+This integration synchronises your Royal Mail tracking data and adds sensors to [Home Assistant](https://www.home-assistant.io/) which can be used in your own automations.
 
 ---
 
@@ -49,6 +49,11 @@ Contirbutions are welcome from everyone! By contributing to this project, you he
    - Fork the repository and create your branch from `main`.
    - Make your changes in the new branch.
    - Open a pull request with a clear description of what you’ve done.
+
+### Royal Mail Tracking API
+To acheive all that this integration does I reverse engineered the Royal Mail tracking API, here is everything i've found so far, i will keep it as up to date as i can.
+
+[Royal Mail Tracking API Document](https://github.com/jampez77/RoyalMail/blob/main/api.md)
 
 ---
 
