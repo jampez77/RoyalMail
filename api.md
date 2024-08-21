@@ -1,6 +1,6 @@
 ### API Documentation - Anonymized Version
 
-Below is an anonymized version of the API documentation you provided. Sensitive information like API keys, tokens, and personal data has been replaced with placeholders.
+Below is an anonymized version of the API documentation. Sensitive information like API keys, tokens, and personal data has been replaced with placeholders.
 
 ## Event Codes
 
