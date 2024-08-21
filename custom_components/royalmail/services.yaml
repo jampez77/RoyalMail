@@ -1,0 +1,12 @@
+track_your_item:
+  fields:
+    referenceNumber:
+      required: true
+      selector:
+        text:
+stop_tracking_item:
+  fields:
+    referenceNumber:
+      required: true
+      selector:
+        text:

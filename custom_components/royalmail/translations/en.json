@@ -1,0 +1,42 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Device is already configured"
+        },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "password": "Password",
+                    "username": "Username"
+                }
+            }
+        }
+    },
+    "services": {
+        "stop_tracking_item": {
+            "description": "Stop tracking a Royal Mail parcel",
+            "fields": {
+                "referenceNumber": {
+                    "description": "e.g. AA123456789US",
+                    "name": "Your reference number"
+                }
+            },
+            "name": "Stop tracking an item"
+        },
+        "track_your_item": {
+            "description": "Track a Royal Mail parcel",
+            "fields": {
+                "referenceNumber": {
+                    "description": "e.g. AA123456789US",
+                    "name": "Your reference number"
+                }
+            },
+            "name": "Track your item"
+        }
+    }
+}

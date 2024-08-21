@@ -1,0 +1,42 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "username": "[%key:common::config_flow::data::username%]",
+          "password": "[%key:common::config_flow::data::password%]"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  },
+  "services": {
+    "track_your_item": {
+      "name": "Track your item",
+      "description": "Track a Royal Mail parcel",
+      "fields": {
+        "referenceNumber": {
+          "name": "Your reference number",
+          "description": "e.g. AA123456789US"
+        }
+      }
+    },
+    "stop_tracking_item": {
+      "name": "Stop tracking an item",
+      "description": "Stop tracking a Royal Mail parcel",
+      "fields": {
+        "referenceNumber": {
+          "name": "Your reference number",
+          "description": "e.g. AA123456789US"
+        }
+      }
+    }
+  }
+}
