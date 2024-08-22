@@ -5,6 +5,7 @@ import logging
 from typing import Any
 from collections.abc import Mapping
 from homeassistant.core import callback
+from homeassistant.config_entries import ConfigEntryState
 import voluptuous as vol
 from .coordinator import RoyalMailTokensCoordinator
 from homeassistant import config_entries
@@ -126,9 +127,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         entry,
                         data=entry_data
                     )
-                    self.hass.async_create_task(
-                        self.hass.config_entries.async_reload(entry.entry_id)
-                    )
+                    # Ensure that the config entry is fully set up before attempting a reload
+                    if entry.state == ConfigEntryState.LOADED:
+                        self.hass.async_create_task(
+                            self.hass.config_entries.async_reload(
+                                entry.entry_id)
+                        )
+                    else:
+                        # If the entry is not yet fully loaded, you might want to log a message or handle it accordingly
+                        print("Config entry is not fully loaded; cannot reload yet.")
+
                 return self.async_abort(reason="entry_updated")
 
             except Exception as e:  # pylint: disable=broad-except
@@ -158,9 +166,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         user_input[CONF_ACCESS_TOKEN] = coordinator.data[CONF_ACCESS_TOKEN]
         self.hass.config_entries.async_update_entry(
             existing_entry, data=user_input)
-        self.hass.async_create_task(
-            self.hass.config_entries.async_reload(existing_entry.entry_id)
-        )
+        # Ensure that the config entry is fully set up before attempting a reload
+        if existing_entry.state == ConfigEntryState.LOADED:
+            await self.hass.config_entries.async_reload(existing_entry.entry_id)
+        else:
+            # If the entry is not yet fully loaded, you might want to log a message or handle it accordingly
+            print("Config entry is not fully loaded; cannot reload yet.")
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
