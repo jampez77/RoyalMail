@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import (
 import uuid
 import hashlib
 from .const import (
+    DOMAIN,
     TOKENS_URL,
     CONF_USERNAME,
     CONF_PASSWORD,
@@ -42,8 +43,31 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+async def refresh_and_persist_tokens(hass: HomeAssistant, session, data):
+    """Utility function to refresh and persist tokens."""
+    coordinator = RoyalMailTokensCoordinator(
+        hass, session, data, grant_type=CONF_REFRESH_TOKEN)
+    new_tokens = await coordinator.refresh_tokens()
+    data = dict(data)
+    # Update tokens in the data dictionary
+    data[CONF_ACCESS_TOKEN] = new_tokens[CONF_ACCESS_TOKEN]
+    if CONF_REFRESH_TOKEN in new_tokens:
+        data[CONF_REFRESH_TOKEN] = new_tokens[CONF_REFRESH_TOKEN]
+
+    # Persist the updated tokens
+    entries = hass.config_entries.async_entries(DOMAIN)
+    for entry in entries:
+        hass.config_entries.async_update_entry(
+            entry=entry,
+            data=data
+        )
+
+    return new_tokens[CONF_ACCESS_TOKEN]
+
+
 class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
+    print("RoyalMailRemoveMailPieceCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str, product_name: str) -> None:
         """Initialize coordinator."""
@@ -117,6 +141,7 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
 
 class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
+    print("RoyalMailTrackNewItemCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str, product_name: str) -> None:
         """Initialize coordinator."""
@@ -205,6 +230,7 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
 
 class RoyalMailMailPieceCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
+    print("RoyalMailMailPieceCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str) -> None:
         """Initialize coordinator."""
@@ -225,15 +251,7 @@ class RoyalMailMailPieceCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
         try:
-            resp = await self.session.request(
-                method="GET",
-                url=MAILPIECE_URL.format(mailPieceId=self.mail_piece_id),
-                headers={
-                    CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
-                    CONF_ORIGIN: ORIGIN,
-                    "Authorization": f"Bearer {self.access_token}"
-                },
-            )
+            resp = await self._make_request()
 
             if resp.status == 200:
                 body = await resp.json()
@@ -244,7 +262,9 @@ class RoyalMailMailPieceCoordinator(DataUpdateCoordinator):
                 return body
 
             elif resp.status == 401:
-                raise InvalidAuth("Invalid authentication credentials")
+                # Token might be expired, try to refresh it
+                await refresh_and_persist_tokens(self.hass, self.session, self.data)
+                resp = await self._make_request()  # Retry the request after refreshing the token
             elif resp.status == 429:
                 raise APIRatelimitExceeded("API rate limit exceeded.")
             else:
@@ -261,9 +281,22 @@ class RoyalMailMailPieceCoordinator(DataUpdateCoordinator):
             _LOGGER.exception("Unexpected exception: %s", err)
             raise UnknownError from err
 
+    async def _make_request(self):
+        """Make the API request."""
+        return await self.session.request(
+            method="GET",
+            url=MAILPIECE_URL.format(mailPieceId=self.mail_piece_id),
+            headers={
+                CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
+                CONF_ORIGIN: ORIGIN,
+                "Authorization": f"Bearer {self.access_token}"
+            },
+        )
+
 
 class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
+    print("RoyalMailMailPiecesCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict) -> None:
         """Initialize coordinator."""
@@ -288,19 +321,12 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
         try:
-            resp = await self.session.request(
-                method="GET",
-                url=MAILPIECES_URL.format(
-                    guid=self.guid, ibmClientId=IBM_CLIENT_ID),
-                headers={
-                    CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
-                    CONF_ORIGIN: ORIGIN,
-                    "Authorization": f"Bearer {self.access_token}"
-                },
-            )
+            resp = await self._make_request()
 
             if resp.status == 401:
-                raise InvalidAuth("Invalid authentication credentials")
+                # Token might be expired, try to refresh it
+                await refresh_and_persist_tokens(self.hass, self.session, self.data)
+                resp = await self._make_request()  # Retry the request after refreshing the token
             if resp.status == 429:
                 raise APIRatelimitExceeded("API rate limit exceeded.")
 
@@ -323,9 +349,23 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
             _LOGGER.exception("Unexpected exception: %s", err)
             raise UnknownError from err
 
+    async def _make_request(self):
+        """Make the API request."""
+        return await self.session.request(
+            method="GET",
+            url=MAILPIECES_URL.format(
+                guid=self.guid, ibmClientId=IBM_CLIENT_ID),
+            headers={
+                CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
+                CONF_ORIGIN: ORIGIN,
+                "Authorization": f"Bearer {self.access_token}"
+            },
+        )
+
 
 class RoyalMailPendingItemsCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
+    print("RoyalMailPendingItemsCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict) -> None:
         """Initialize coordinator."""
@@ -340,22 +380,17 @@ class RoyalMailPendingItemsCoordinator(DataUpdateCoordinator):
         )
         self.session = session
         self.access_token = data[CONF_ACCESS_TOKEN]
+        self.data = data
 
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
         try:
-            resp = await self.session.request(
-                method="GET",
-                url=PENDING_ITEMS_URL,
-                headers={
-                    CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
-                    CONF_ORIGIN: ORIGIN,
-                    "Authorization": f"Bearer {self.access_token}"
-                },
-            )
+            resp = await self._make_request()
 
             if resp.status == 401:
-                raise InvalidAuth("Invalid authentication credentials")
+                # Token might be expired, try to refresh it
+                await refresh_and_persist_tokens(self.hass, self.session, self.data)
+                resp = await self._make_request()  # Retry the request after refreshing the token
             if resp.status == 429:
                 raise APIRatelimitExceeded("API rate limit exceeded.")
 
@@ -378,12 +413,28 @@ class RoyalMailPendingItemsCoordinator(DataUpdateCoordinator):
             _LOGGER.exception("Unexpected exception: %s", err)
             raise UnknownError from err
 
+    async def _make_request(self):
+        """Make the API request."""
+        return await self.session.request(
+            method="GET",
+            url=PENDING_ITEMS_URL,
+            headers={
+                CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
+                CONF_ORIGIN: ORIGIN,
+                "Authorization": f"Bearer {self.access_token}"
+            },
+        )
+
 
 class RoyalMailTokensCoordinator(DataUpdateCoordinator):
     """Tokens coordinator."""
+    print("RoyalMailTokensCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict, grant_type: str) -> None:
         """Initialize coordinator."""
+
+        if data is None:
+            raise ValueError("data cannot be None")
 
         super().__init__(
             hass,
@@ -400,7 +451,7 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
         unique_id = hashlib.md5(
             data[CONF_USERNAME].encode("UTF-8")).hexdigest()
         self.device_id = str(uuid.UUID(hex=unique_id))
-        self.data = data
+        self.data = dict(data)
         self.body = {
             CONF_USERNAME: self.username,
             CONF_PASSWORD: self.password,
@@ -418,12 +469,7 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
         try:
-            resp = await self.session.request(
-                method="POST",
-                url=TOKENS_URL,
-                json=self.body,
-                headers={CONF_IBM_CLIENT_ID: IBM_CLIENT_ID},
-            )
+            resp = await self._make_request()
 
             if resp.status == 401:
                 raise InvalidAuth("Invalid authentication credentials")
@@ -455,6 +501,19 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
         except Exception as err:
             _LOGGER.exception("Unexpected exception: %s", err)
             raise UnknownError from err
+
+    async def _make_request(self):
+        """Make the API request."""
+        return await self.session.request(
+            method="POST",
+            url=TOKENS_URL,
+            json=self.body,
+            headers={CONF_IBM_CLIENT_ID: IBM_CLIENT_ID},
+        )
+
+    async def refresh_tokens(self):
+        """Public method to refresh tokens."""
+        return await self._async_update_data()
 
 
 class RoyalMailError(HomeAssistantError):
