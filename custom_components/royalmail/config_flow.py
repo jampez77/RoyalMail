@@ -44,8 +44,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     """Validate the user input allows us to connect."""
 
     session = async_get_clientsession(hass)
-    coordinator = RoyalMailTokensCoordinator(
-        hass, session, data, CONF_PASSWORD)
+    coordinator = RoyalMailTokensCoordinator(hass, session, data)
 
     await coordinator.async_refresh()
 

@@ -9,7 +9,6 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 import uuid
-import hashlib
 from .const import (
     DOMAIN,
     TOKENS_URL,
@@ -45,12 +44,16 @@ _LOGGER = logging.getLogger(__name__)
 
 async def refresh_and_persist_tokens(hass: HomeAssistant, session, data):
     """Utility function to refresh and persist tokens."""
-    coordinator = RoyalMailTokensCoordinator(
-        hass, session, data, grant_type=CONF_REFRESH_TOKEN)
+    print("refresh_and_persist_tokens")
+    print(data)
+    coordinator = RoyalMailTokensCoordinator(hass, session, data)
     new_tokens = await coordinator.refresh_tokens()
     data = dict(data)
+    print(coordinator.data)
     # Update tokens in the data dictionary
-    data[CONF_ACCESS_TOKEN] = new_tokens[CONF_ACCESS_TOKEN]
+
+    if CONF_ACCESS_TOKEN in new_tokens:
+        data[CONF_ACCESS_TOKEN] = new_tokens[CONF_ACCESS_TOKEN]
     if CONF_REFRESH_TOKEN in new_tokens:
         data[CONF_REFRESH_TOKEN] = new_tokens[CONF_REFRESH_TOKEN]
 
@@ -67,11 +70,10 @@ async def refresh_and_persist_tokens(hass: HomeAssistant, session, data):
 
 class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
-    print("RoyalMailRemoveMailPieceCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str, product_name: str) -> None:
         """Initialize coordinator."""
-
+        print("RoyalMailRemoveMailPieceCoordinator")
         super().__init__(
             hass,
             _LOGGER,
@@ -86,9 +88,7 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
         self.mail_piece_id = mail_piece_id
         self.product_name = product_name
         self.guid = data[CONF_GUID]
-        unique_id = hashlib.md5(
-            data[CONF_USERNAME].encode("UTF-8")).hexdigest()
-        self.device_id = str(uuid.UUID(hex=unique_id))
+        self.device_id = str(uuid.uuid4().hex.upper()[0:6])
         self.data = data
 
     async def _async_update_data(self):
@@ -141,11 +141,10 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
 
 class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
-    print("RoyalMailTrackNewItemCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str, product_name: str) -> None:
         """Initialize coordinator."""
-
+        print("RoyalMailTrackNewItemCoordinator")
         super().__init__(
             hass,
             _LOGGER,
@@ -163,7 +162,6 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
         try:
-            print(SUBSCRIPTION_URL.format(mailPieceId=self.mail_piece_id))
             create_subscription = await self.session.request(
                 method="POST",
                 url=SUBSCRIPTION_URL.format(mailPieceId=self.mail_piece_id),
@@ -175,11 +173,7 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
                 },
             )
 
-            print(create_subscription.status)
             if create_subscription.status == 200:
-                print("subscribed new item")
-                print(PUSH_NOTIFICATION_URL.format(
-                    guid=self.guid, mailPieceId=self.mail_piece_id))
                 push_notification = await self.session.request(
                     method="PUT",
                     url=PUSH_NOTIFICATION_URL.format(
@@ -191,9 +185,7 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
                         PRODUCT_NAME: self.product_name
                     }
                 )
-                print(push_notification.status)
                 if push_notification.status == 201:
-                    print("notify new item")
 
                     tracking_alias = await self.session.request(
                         method="GET",
@@ -208,8 +200,6 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
                         },
                     )
                     body = await tracking_alias.json()
-                    print("track new item")
-                    print(body)
                     return body
 
             else:
@@ -230,11 +220,10 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
 
 class RoyalMailMailPieceCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
-    print("RoyalMailMailPieceCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str) -> None:
         """Initialize coordinator."""
-
+        print("RoyalMailMailPieceCoordinator")
         super().__init__(
             hass,
             _LOGGER,
@@ -261,12 +250,10 @@ class RoyalMailMailPieceCoordinator(DataUpdateCoordinator):
 
                 return body
 
-            elif resp.status == 401:
+            elif resp.status == 401 or resp.status == 429:
                 # Token might be expired, try to refresh it
                 await refresh_and_persist_tokens(self.hass, self.session, self.data)
                 resp = await self._make_request()  # Retry the request after refreshing the token
-            elif resp.status == 429:
-                raise APIRatelimitExceeded("API rate limit exceeded.")
             else:
                 raise NotFoundError(f"Unable to track {self.mail_piece_id}")
 
@@ -296,11 +283,10 @@ class RoyalMailMailPieceCoordinator(DataUpdateCoordinator):
 
 class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
-    print("RoyalMailMailPiecesCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict) -> None:
         """Initialize coordinator."""
-
+        print("RoyalMailMailPiecesCoordinator")
         super().__init__(
             hass,
             _LOGGER,
@@ -313,9 +299,7 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
         self.access_token = data[CONF_ACCESS_TOKEN]
         self.refresh_token = data[CONF_REFRESH_TOKEN]
         self.guid = data[CONF_GUID]
-        unique_id = hashlib.md5(
-            data[CONF_USERNAME].encode("UTF-8")).hexdigest()
-        self.device_id = str(uuid.UUID(hex=unique_id))
+        self.device_id = str(uuid.uuid4().hex.upper()[0:6])
         self.data = data
 
     async def _async_update_data(self):
@@ -323,12 +307,10 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
         try:
             resp = await self._make_request()
 
-            if resp.status == 401:
+            if resp.status == 401 or resp.status == 429:
                 # Token might be expired, try to refresh it
                 await refresh_and_persist_tokens(self.hass, self.session, self.data)
                 resp = await self._make_request()  # Retry the request after refreshing the token
-            if resp.status == 429:
-                raise APIRatelimitExceeded("API rate limit exceeded.")
 
             body = await resp.json()
             print("have mail pieces")
@@ -365,11 +347,10 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
 
 class RoyalMailPendingItemsCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
-    print("RoyalMailPendingItemsCoordinator")
 
     def __init__(self, hass: HomeAssistant, session, data: dict) -> None:
         """Initialize coordinator."""
-
+        print("RoyalMailPendingItemsCoordinator")
         super().__init__(
             hass,
             _LOGGER,
@@ -387,12 +368,10 @@ class RoyalMailPendingItemsCoordinator(DataUpdateCoordinator):
         try:
             resp = await self._make_request()
 
-            if resp.status == 401:
+            if resp.status == 401 or resp.status == 429:
                 # Token might be expired, try to refresh it
                 await refresh_and_persist_tokens(self.hass, self.session, self.data)
                 resp = await self._make_request()  # Retry the request after refreshing the token
-            if resp.status == 429:
-                raise APIRatelimitExceeded("API rate limit exceeded.")
 
             body = await resp.json()
 
@@ -428,14 +407,10 @@ class RoyalMailPendingItemsCoordinator(DataUpdateCoordinator):
 
 class RoyalMailTokensCoordinator(DataUpdateCoordinator):
     """Tokens coordinator."""
-    print("RoyalMailTokensCoordinator")
 
-    def __init__(self, hass: HomeAssistant, session, data: dict, grant_type: str) -> None:
+    def __init__(self, hass: HomeAssistant, session, data: dict) -> None:
         """Initialize coordinator."""
-
-        if data is None:
-            raise ValueError("data cannot be None")
-
+        print("RoyalMailTokensCoordinator")
         super().__init__(
             hass,
             _LOGGER,
@@ -445,51 +420,54 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=300),
         )
         self.session = session
-        self.username = data[CONF_USERNAME]
-        self.password = data[CONF_PASSWORD]
-        self.grant_type = grant_type
-        unique_id = hashlib.md5(
-            data[CONF_USERNAME].encode("UTF-8")).hexdigest()
-        self.device_id = str(uuid.UUID(hex=unique_id))
+        self.device_id = str(uuid.uuid4().hex.upper()[0:6])
         self.data = dict(data)
-        self.body = {
-            CONF_USERNAME: self.username,
-            CONF_PASSWORD: self.password,
-            CONF_GRANT_TYPE: self.grant_type,
-            CONF_DEVICE_ID: self.device_id
-        }
+        self.body = None
 
-        if self.grant_type == CONF_REFRESH_TOKEN:
+        if CONF_USERNAME in data and CONF_PASSWORD in data:
+            self.body = {
+                CONF_USERNAME: data[CONF_USERNAME],
+                CONF_PASSWORD: data[CONF_PASSWORD],
+                CONF_GRANT_TYPE: CONF_PASSWORD,
+                CONF_DEVICE_ID: self.device_id
+            }
+        elif CONF_REFRESH_TOKEN in data:
             self.body = {
                 CONF_REFRESH_TOKEN: data[CONF_REFRESH_TOKEN],
-                CONF_GRANT_TYPE: self.grant_type,
+                CONF_GRANT_TYPE: CONF_REFRESH_TOKEN,
                 CONF_DEVICE_ID: self.device_id
             }
 
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
         try:
-            resp = await self._make_request()
+            if self.body is not None:
+                resp = await self._make_request()
 
-            if resp.status == 401:
-                raise InvalidAuth("Invalid authentication credentials")
-            if resp.status == 429:
-                raise APIRatelimitExceeded("API rate limit exceeded.")
+                if resp.status == 401:
+                    raise InvalidAuth("Invalid authentication credentials")
+                if resp.status == 429:
+                    raise APIRatelimitExceeded("API rate limit exceeded.")
 
-            body = await resp.json()
-            self.data[CONF_ACCESS_TOKEN] = body[CONF_ACCESS_TOKEN]
+                body = await resp.json()
 
-            if CONF_REFRESH_TOKEN in body:
-                self.data[CONF_REFRESH_TOKEN] = body[CONF_REFRESH_TOKEN]
+                if CONF_ACCESS_TOKEN in body:
+                    self.data[CONF_ACCESS_TOKEN] = body[CONF_ACCESS_TOKEN]
 
-            self.data[CONF_GUID] = body[CONF_GUID]
-            self.data[CONF_FIRST_NAME] = body[CONF_FIRST_NAME]
+                if CONF_REFRESH_TOKEN in body:
+                    self.data[CONF_REFRESH_TOKEN] = body[CONF_REFRESH_TOKEN]
 
-            # Validate response structure
-            if not isinstance(body, dict):
-                raise ValueError("Unexpected response format")
-            print(body)
-            return body
+                if CONF_GUID in body:
+                    self.data[CONF_GUID] = body[CONF_GUID]
+
+                if CONF_FIRST_NAME in body:
+                    self.data[CONF_FIRST_NAME] = body[CONF_FIRST_NAME]
+
+                # Validate response structure
+                if not isinstance(body, dict):
+                    raise ValueError("Unexpected response format")
+                print(body)
+                return body
 
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed from err

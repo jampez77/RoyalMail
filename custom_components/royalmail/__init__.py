@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from .const import DOMAIN
+from homeassistant.config_entries import ConfigEntryState
 from .services import async_setup_services, async_cleanup_services
 
 PLATFORMS = [Platform.SENSOR]
@@ -33,7 +34,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def options_update_listener(hass: HomeAssistant, config_entry: ConfigEntry):
     """Handle options update."""
-    await hass.config_entries.async_reload(config_entry.entry_id)
+    if config_entry.state == ConfigEntryState.LOADED:
+        await hass.config_entries.async_reload(config_entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
