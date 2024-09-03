@@ -13,7 +13,6 @@ from .const import (
     CONF_MP_DETAILS
 )
 from homeassistant.helpers.entity_registry import (
-    async_entries_for_config_entry,
     async_get,
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession

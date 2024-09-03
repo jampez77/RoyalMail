@@ -114,7 +114,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updated_data = existing_entry.data.copy()
                     # Merge the import_data into the entry_data
                     updated_data.update(import_data)
-
+                    print(updated_data)
                     # Update the entry with the new data
                     self.hass.config_entries.async_update_entry(
                         existing_entry,
@@ -122,9 +122,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
 
                 for entry in self._async_current_entries():
+                    # Update specific data in the entry
+                    updated_data = entry.data.copy()
+                    # Merge the import_data into the entry_data
+                    updated_data.update(entry_data)
+                    print(updated_data)
                     self.hass.config_entries.async_update_entry(
                         entry,
-                        data=entry_data
+                        data=updated_data
                     )
                     # Ensure that the config entry is fully set up before attempting a reload
                     if entry.state == ConfigEntryState.LOADED:
@@ -149,7 +154,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         session = async_get_clientsession(self.hass)
         coordinator = RoyalMailTokensCoordinator(
-            self.hass, session, user_input, CONF_REFRESH_TOKEN)
+            self.hass, session, user_input)
 
         await coordinator.async_refresh()
         print(coordinator.data)
@@ -163,8 +168,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
         print(existing_entry.data)
         user_input[CONF_ACCESS_TOKEN] = coordinator.data[CONF_ACCESS_TOKEN]
+
+        # Update specific data in the entry
+        updated_data = existing_entry.data.copy()
+        # Merge the import_data into the entry_data
+        updated_data.update(user_input)
+        print(updated_data)
+        # Update the entry with the new data
         self.hass.config_entries.async_update_entry(
-            existing_entry, data=user_input)
+            existing_entry,
+            data=updated_data
+        )
         # Ensure that the config entry is fully set up before attempting a reload
         if existing_entry.state == ConfigEntryState.LOADED:
             await self.hass.config_entries.async_reload(existing_entry.entry_id)

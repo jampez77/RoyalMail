@@ -35,7 +35,7 @@ Use this route only if you do not want to use [HACS](https://hacs.xyz/) and love
 
 ---
 ## Data 
-The integration creates a new entity for each parcel on you Royal Mail account with it's current delivery status, all other associated data are saved as attributes. Additionally there are entities for all mail pieces, pending mail pieces and total records.
+The integration creates a new entity for each parcel on you Royal Mail account with it's current delivery status, all other associated data are saved as attributes. Additionally there are entities for all mail pieces.
 
 ## Contributing
 

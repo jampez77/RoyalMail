@@ -8,6 +8,9 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
+from homeassistant.helpers.entity_registry import (
+    async_get,
+)
 import uuid
 from .const import (
     DOMAIN,
@@ -38,34 +41,34 @@ from .const import (
     PRODUCT_NAME,
     REMOVE_MAILPIECE_URL
 )
-
+from asyncio import Lock
 _LOGGER = logging.getLogger(__name__)
 
 
-async def refresh_and_persist_tokens(hass: HomeAssistant, session, data):
-    """Utility function to refresh and persist tokens."""
-    print("refresh_and_persist_tokens")
-    print(data)
-    coordinator = RoyalMailTokensCoordinator(hass, session, data)
-    new_tokens = await coordinator.refresh_tokens()
-    data = dict(data)
-    print(coordinator.data)
-    # Update tokens in the data dictionary
+class TokenManager:
+    def __init__(self, hass: HomeAssistant, session, data) -> None:
+        self.hass = hass
+        self.session = session
+        self.data = data
+        self.lock = Lock()
 
-    if CONF_ACCESS_TOKEN in new_tokens:
-        data[CONF_ACCESS_TOKEN] = new_tokens[CONF_ACCESS_TOKEN]
-    if CONF_REFRESH_TOKEN in new_tokens:
-        data[CONF_REFRESH_TOKEN] = new_tokens[CONF_REFRESH_TOKEN]
+    async def refresh_tokens(self):
+        async with self.lock:
+            # Perform the refresh logic
+            coordinator = RoyalMailTokensCoordinator(
+                self.hass, self.session, self.data)
+            new_tokens = await coordinator.refresh_tokens()
+            if new_tokens:
+                self.data.update(new_tokens)
+                await self._persist_tokens()
 
-    # Persist the updated tokens
-    entries = hass.config_entries.async_entries(DOMAIN)
-    for entry in entries:
-        hass.config_entries.async_update_entry(
-            entry=entry,
-            data=data
-        )
-
-    return new_tokens[CONF_ACCESS_TOKEN]
+    async def _persist_tokens(self):
+        entries = self.hass.config_entries.async_entries(DOMAIN)
+        for entry in entries:
+            updated_data = entry.data.copy()
+            updated_data.update(self.data)
+            self.hass.config_entries.async_update_entry(
+                entry, data=updated_data)
 
 
 class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
@@ -95,7 +98,6 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
         """Fetch data from API endpoint."""
         try:
 
-            print("subscribed delete item")
             print(PUSH_NOTIFICATION_URL.format(
                 guid=self.guid, mailPieceId=self.mail_piece_id))
             push_notification = await self.session.request(
@@ -109,7 +111,6 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
                     PRODUCT_NAME: self.product_name
                 }
             )
-            print(push_notification.status)
             if push_notification.status == 201:
                 removeMailPiece = await self.session.request(
                     method="DELETE",
@@ -124,7 +125,6 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
 
                 body = await removeMailPiece.json()
                 print("remove item")
-                print(body)
                 return body
 
         except InvalidAuth as err:
@@ -236,31 +236,38 @@ class RoyalMailMailPieceCoordinator(DataUpdateCoordinator):
         self.access_token = data[CONF_ACCESS_TOKEN]
         self.guid = data[CONF_GUID]
         self.mail_piece_id = mail_piece_id
+        self.authenticating = False
+        self.token_manager = TokenManager(hass, session, data)
 
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
+        if self.authenticating:
+            # Return early or set a pending state instead of making an API call
+            print("authenticating")
+            return {"status": "pending"}
         try:
+
             resp = await self._make_request()
+            if resp.status in [401, 429]:
+                self.authenticating = True
+                await self.token_manager.refresh_tokens()
+                self.authenticating = False
+                resp = await self._make_request()
 
-            if resp.status == 200:
-                body = await resp.json()
-                # Validate response structure
-                if not isinstance(body, dict):
-                    raise ValueError("Unexpected response format")
+            body = await resp.json()
+            # Validate response structure
+            if not isinstance(body, dict):
+                raise ValueError("Unexpected response format")
 
-                return body
-
-            elif resp.status == 401 or resp.status == 429:
-                # Token might be expired, try to refresh it
-                await refresh_and_persist_tokens(self.hass, self.session, self.data)
-                resp = await self._make_request()  # Retry the request after refreshing the token
-            else:
-                raise NotFoundError(f"Unable to track {self.mail_piece_id}")
+            return body
 
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed from err
         except RoyalMailError as err:
             raise UpdateFailed(str(err)) from err
+        except ConfigEntryAuthFailed:
+            print("Authentication failed; keeping entities as is until fixed")
+            raise
         except ValueError as err:
             _LOGGER.exception("Value error occurred: %s", err)
             raise UpdateFailed(f"Unexpected response: {err}") from err
@@ -295,22 +302,34 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
             # Polling interval. Will only be polled if there are subscribers.
             update_interval=timedelta(seconds=300),
         )
+        self.authenticating = False
         self.session = session
-        self.access_token = data[CONF_ACCESS_TOKEN]
-        self.refresh_token = data[CONF_REFRESH_TOKEN]
-        self.guid = data[CONF_GUID]
+        self.access_token = None
+        if CONF_ACCESS_TOKEN in data:
+            self.access_token = data[CONF_ACCESS_TOKEN]
+        if CONF_REFRESH_TOKEN in data:
+            self.refresh_token = data[CONF_REFRESH_TOKEN]
+        if CONF_GUID in data:
+            self.guid = data[CONF_GUID]
         self.device_id = str(uuid.uuid4().hex.upper()[0:6])
         self.data = data
+        self.token_manager = TokenManager(hass, session, data)
 
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
-        try:
-            resp = await self._make_request()
+        if self.authenticating:
+            # Return early or set a pending state instead of making an API call
+            print("authenticating")
+            return {"status": "pending"}
 
-            if resp.status == 401 or resp.status == 429:
-                # Token might be expired, try to refresh it
-                await refresh_and_persist_tokens(self.hass, self.session, self.data)
-                resp = await self._make_request()  # Retry the request after refreshing the token
+        try:
+
+            resp = await self._make_request()
+            if resp.status in [401, 429]:
+                self.authenticating = True
+                await self.token_manager.refresh_tokens()
+                self.authenticating = False
+                resp = await self._make_request()
 
             body = await resp.json()
             print("have mail pieces")
@@ -318,12 +337,30 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
             if not isinstance(body, dict):
                 raise ValueError("Unexpected response format")
 
+            # Persist the updated tokens
+            entries = self.hass.config_entries.async_entries(DOMAIN)
+            for entry in entries:
+                print(entry)
+                # Update specific data in the entry
+                updated_data = entry.data.copy()
+                # Merge the import_data into the entry_data
+                updated_data.update(body)
+                print(updated_data)
+                # Update the entry with the new data
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data=updated_data
+                )
+
             return body
 
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed from err
         except RoyalMailError as err:
             raise UpdateFailed(str(err)) from err
+        except ConfigEntryAuthFailed:
+            print("Authentication failed; keeping entities as is until fixed")
+            raise
         except ValueError as err:
             _LOGGER.exception("Value error occurred: %s", err)
             raise UpdateFailed(f"Unexpected response: {err}") from err
@@ -337,66 +374,6 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
             method="GET",
             url=MAILPIECES_URL.format(
                 guid=self.guid, ibmClientId=IBM_CLIENT_ID),
-            headers={
-                CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
-                CONF_ORIGIN: ORIGIN,
-                "Authorization": f"Bearer {self.access_token}"
-            },
-        )
-
-
-class RoyalMailPendingItemsCoordinator(DataUpdateCoordinator):
-    """ Pending items coordinator"""
-
-    def __init__(self, hass: HomeAssistant, session, data: dict) -> None:
-        """Initialize coordinator."""
-        print("RoyalMailPendingItemsCoordinator")
-        super().__init__(
-            hass,
-            _LOGGER,
-            # Name of the data. For logging purposes.
-            name="Royal Mail",
-            # Polling interval. Will only be polled if there are subscribers.
-            update_interval=timedelta(seconds=300),
-        )
-        self.session = session
-        self.access_token = data[CONF_ACCESS_TOKEN]
-        self.data = data
-
-    async def _async_update_data(self):
-        """Fetch data from API endpoint."""
-        try:
-            resp = await self._make_request()
-
-            if resp.status == 401 or resp.status == 429:
-                # Token might be expired, try to refresh it
-                await refresh_and_persist_tokens(self.hass, self.session, self.data)
-                resp = await self._make_request()  # Retry the request after refreshing the token
-
-            body = await resp.json()
-
-            # Validate response structure
-            if not isinstance(body, dict):
-                raise ValueError("Unexpected response format")
-
-            return body
-
-        except InvalidAuth as err:
-            raise ConfigEntryAuthFailed from err
-        except RoyalMailError as err:
-            raise UpdateFailed(str(err)) from err
-        except ValueError as err:
-            _LOGGER.exception("Value error occurred: %s", err)
-            raise UpdateFailed(f"Unexpected response: {err}") from err
-        except Exception as err:
-            _LOGGER.exception("Unexpected exception: %s", err)
-            raise UnknownError from err
-
-    async def _make_request(self):
-        """Make the API request."""
-        return await self.session.request(
-            method="GET",
-            url=PENDING_ITEMS_URL,
             headers={
                 CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
                 CONF_ORIGIN: ORIGIN,
@@ -466,13 +443,31 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
                 # Validate response structure
                 if not isinstance(body, dict):
                     raise ValueError("Unexpected response format")
-                print(body)
+
+                # Persist the updated tokens
+                entries = self.hass.config_entries.async_entries(DOMAIN)
+                for entry in entries:
+                    print(entry)
+                    # Update specific data in the entry
+                    updated_data = entry.data.copy()
+                    # Merge the import_data into the entry_data
+                    updated_data.update(body)
+                    print(updated_data)
+                    # Update the entry with the new data
+                    self.hass.config_entries.async_update_entry(
+                        entry,
+                        data=updated_data
+                    )
+
                 return body
 
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed from err
         except RoyalMailError as err:
             raise UpdateFailed(str(err)) from err
+        except ConfigEntryAuthFailed:
+            print("Authentication failed; keeping entities as is until fixed")
+            raise
         except ValueError as err:
             _LOGGER.exception("Value error occurred: %s", err)
             raise UpdateFailed(f"Unexpected response: {err}") from err
