@@ -61,6 +61,7 @@ class TokenManager:
             if new_tokens:
                 self.data.update(new_tokens)
                 await self._persist_tokens()
+            return new_tokens
 
     async def _persist_tokens(self):
         entries = self.hass.config_entries.async_entries(DOMAIN)
@@ -243,8 +244,19 @@ class RoyalMailMailPieceCoordinator(DataUpdateCoordinator):
         """Fetch data from API endpoint."""
         if self.authenticating:
             # Return early or set a pending state instead of making an API call
-            print("authenticating")
             return {"status": "pending"}
+
+        if not self.access_token or not self.guid:
+            self.authenticating = True
+            updated_tokens = await self.token_manager.refresh_tokens()
+            self.authenticating = False
+
+            if updated_tokens:
+                self.access_token = updated_tokens.get(CONF_ACCESS_TOKEN)
+                self.guid = updated_tokens.get(CONF_GUID)
+            else:
+                raise UpdateFailed(
+                    "Failed to refresh tokens and missing essential data.")
         try:
 
             resp = await self._make_request()
@@ -304,13 +316,9 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
         )
         self.authenticating = False
         self.session = session
-        self.access_token = None
-        if CONF_ACCESS_TOKEN in data:
-            self.access_token = data[CONF_ACCESS_TOKEN]
-        if CONF_REFRESH_TOKEN in data:
-            self.refresh_token = data[CONF_REFRESH_TOKEN]
-        if CONF_GUID in data:
-            self.guid = data[CONF_GUID]
+        self.access_token = data.get(CONF_ACCESS_TOKEN, None)
+        self.refresh_token = data.get(CONF_REFRESH_TOKEN, None)
+        self.guid = data.get(CONF_GUID, None)
         self.device_id = str(uuid.uuid4().hex.upper()[0:6])
         self.data = data
         self.token_manager = TokenManager(hass, session, data)
@@ -322,8 +330,19 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
             print("authenticating")
             return {"status": "pending"}
 
-        try:
+        if not self.access_token or not self.guid:
+            self.authenticating = True
+            updated_tokens = await self.token_manager.refresh_tokens()
+            self.authenticating = False
 
+            if updated_tokens:
+                self.access_token = updated_tokens.get(CONF_ACCESS_TOKEN)
+                self.guid = updated_tokens.get(CONF_GUID)
+            else:
+                raise UpdateFailed(
+                    "Failed to refresh tokens and missing essential data.")
+
+        try:
             resp = await self._make_request()
             if resp.status in [401, 429]:
                 self.authenticating = True
@@ -428,24 +447,21 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
 
                 body = await resp.json()
 
-                if CONF_ACCESS_TOKEN in body:
-                    self.data[CONF_ACCESS_TOKEN] = body[CONF_ACCESS_TOKEN]
+                self.data[CONF_ACCESS_TOKEN] = body.get(
+                    CONF_ACCESS_TOKEN, None)
+                self.data[CONF_REFRESH_TOKEN] = body.get(
+                    CONF_REFRESH_TOKEN, None)
+                self.data[CONF_GUID] = body.get(CONF_GUID, None)
+                self.data[CONF_FIRST_NAME] = body.get(CONF_FIRST_NAME, None)
 
-                if CONF_REFRESH_TOKEN in body:
-                    self.data[CONF_REFRESH_TOKEN] = body[CONF_REFRESH_TOKEN]
-
-                if CONF_GUID in body:
-                    self.data[CONF_GUID] = body[CONF_GUID]
-
-                if CONF_FIRST_NAME in body:
-                    self.data[CONF_FIRST_NAME] = body[CONF_FIRST_NAME]
-
+                print(self.data)
                 # Validate response structure
                 if not isinstance(body, dict):
                     raise ValueError("Unexpected response format")
 
                 # Persist the updated tokens
                 entries = self.hass.config_entries.async_entries(DOMAIN)
+                print(entries)
                 for entry in entries:
                     print(entry)
                     # Update specific data in the entry

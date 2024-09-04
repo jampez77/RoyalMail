@@ -53,7 +53,8 @@ async def get_sensors(
 ) -> list:
 
     data = dict(entry.data)
-
+    print("get_sensors")
+    print(data)
     mailPiecesCoordinator = RoyalMailMailPiecesCoordinator(
         hass, session, data)
 
@@ -79,7 +80,7 @@ async def get_sensors(
                         description=SensorEntityDescription(
                             key=CONF_MAILPIECE_ID,
                             name=mail_piece_id,
-                            icon="mdi:package-variant-plus"
+                            icon="mdi:package-variant-closed-remove"
                         )
                     )
                 )
@@ -171,12 +172,14 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
     def icon(self) -> str:
         """Return a representative icon of the timer."""
         if self.entity_description.key == CONF_MAILPIECE_ID:
-            if 'summary' in self.data and 'statusCategory' in self.data['summary']:
-                status_category = self.data['summary']['statusCategory']
-                if status_category == "Delivered":
+            if 'summary' in self.data and 'lastEventCode' in self.data['summary']:
+                lastEventCode = self.data['summary']['lastEventCode']
+                if lastEventCode in ["EVKSP", "EVKOP"]:
                     return "mdi:package-variant-closed-check"
-                elif status_category == "We've got it":
+                elif lastEventCode in ["EVGPD"]:
                     return "mdi:truck-delivery-outline"
+                elif lastEventCode in ["EVNSR", "EVODO", "EVORI", "EVOAC", "EVAIE", "EVPPA", "EVDAV", "EVIMC", "EVDAC", "EVNRT", "EVOCO"]:
+                    return "mdi:transit-connection-variant"
         return self.entity_description.icon
 
     async def async_update(self) -> None:
@@ -190,8 +193,7 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
 
             # Check if the data is available before processing it
             if not self.data:
-                self._state = "Loading..."
-                return
+                self._state = "Unable to Track"
 
             if self.entity_description.key == CONF_MP_DETAILS:
                 value = self.data
@@ -229,7 +231,7 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
     @property
     def native_value(self) -> str | date | None:
         if self._state is None:
-            return "Loading..."  # or some other indicator
+            return "Unable to Track"  # or some other indicator
         return self._state
 
     @ property
