@@ -22,7 +22,7 @@ from .const import (
     CONF_IBM_CLIENT_ID,
     IBM_CLIENT_ID,
     CONF_REFRESH_TOKEN,
-    PENDING_ITEMS_URL,
+    CONF_MAILPIECES,
     CONF_ORIGIN,
     ORIGIN,
     CONF_ACCESS_TOKEN,
@@ -39,7 +39,10 @@ from .const import (
     CONF_USER_ID,
     CONF_MAILPIECE_ID,
     PRODUCT_NAME,
-    REMOVE_MAILPIECE_URL
+    REMOVE_MAILPIECE_URL,
+    CONF_MP_DETAILS,
+    CONF_SUMMARY,
+    CONF_PRODUCT_NAME
 )
 from asyncio import Lock
 _LOGGER = logging.getLogger(__name__)
@@ -75,9 +78,8 @@ class TokenManager:
 class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
 
-    def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str, product_name: str) -> None:
+    def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str) -> None:
         """Initialize coordinator."""
-        print("RoyalMailRemoveMailPieceCoordinator")
         super().__init__(
             hass,
             _LOGGER,
@@ -90,7 +92,6 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
         self.access_token = data[CONF_ACCESS_TOKEN]
         self.refresh_token = data[CONF_REFRESH_TOKEN]
         self.mail_piece_id = mail_piece_id
-        self.product_name = product_name
         self.guid = data[CONF_GUID]
         self.device_id = str(uuid.uuid4().hex.upper()[0:6])
         self.data = data
@@ -99,8 +100,20 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
         """Fetch data from API endpoint."""
         try:
 
-            print(PUSH_NOTIFICATION_URL.format(
-                guid=self.guid, mailPieceId=self.mail_piece_id))
+            mail_piece = await self.session.request(
+                method="GET",
+                url=MAILPIECE_URL.format(mailPieceId=self.mail_piece_id),
+                headers={
+                    CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
+                    CONF_ORIGIN: ORIGIN,
+                    "Authorization": f"Bearer {self.access_token}"
+                },
+            )
+
+            mailPiece = await mail_piece.json()
+
+            product_name = mailPiece[CONF_MAILPIECES][CONF_SUMMARY][CONF_PRODUCT_NAME]
+
             push_notification = await self.session.request(
                 method="DELETE",
                 url=PUSH_NOTIFICATION_URL.format(
@@ -109,7 +122,7 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
                     ACCESS_TOKEN: self.access_token
                 },
                 json={
-                    PRODUCT_NAME: self.product_name
+                    PRODUCT_NAME: product_name
                 }
             )
             if push_notification.status == 201:
@@ -125,7 +138,6 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
                 )
 
                 body = await removeMailPiece.json()
-                print("remove item")
                 return body
 
         except InvalidAuth as err:
@@ -143,9 +155,9 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
 class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
     """ Pending items coordinator"""
 
-    def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str, product_name: str) -> None:
+    def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str) -> None:
         """Initialize coordinator."""
-        print("RoyalMailTrackNewItemCoordinator")
+
         super().__init__(
             hass,
             _LOGGER,
@@ -158,11 +170,24 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
         self.access_token = data[CONF_ACCESS_TOKEN]
         self.guid = data[CONF_GUID]
         self.mail_piece_id = mail_piece_id
-        self.product_name = product_name
 
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
         try:
+            mail_piece = await self.session.request(
+                method="GET",
+                url=MAILPIECE_URL.format(mailPieceId=self.mail_piece_id),
+                headers={
+                    CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
+                    CONF_ORIGIN: ORIGIN,
+                    "Authorization": f"Bearer {self.access_token}"
+                },
+            )
+
+            mailPiece = await mail_piece.json()
+
+            product_name = mailPiece[CONF_MAILPIECES][CONF_SUMMARY][CONF_PRODUCT_NAME]
+
             create_subscription = await self.session.request(
                 method="POST",
                 url=SUBSCRIPTION_URL.format(mailPieceId=self.mail_piece_id),
@@ -183,7 +208,7 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
                         ACCESS_TOKEN: self.access_token
                     },
                     json={
-                        PRODUCT_NAME: self.product_name
+                        PRODUCT_NAME: product_name
                     }
                 )
                 if push_notification.status == 201:
@@ -219,93 +244,11 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
             raise UnknownError from err
 
 
-class RoyalMailMailPieceCoordinator(DataUpdateCoordinator):
-    """ Pending items coordinator"""
-
-    def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str) -> None:
-        """Initialize coordinator."""
-        print("RoyalMailMailPieceCoordinator")
-        super().__init__(
-            hass,
-            _LOGGER,
-            # Name of the data. For logging purposes.
-            name="Royal Mail",
-            # Polling interval. Will only be polled if there are subscribers.
-            update_interval=timedelta(seconds=300),
-        )
-        self.session = session
-        self.access_token = data[CONF_ACCESS_TOKEN]
-        self.guid = data[CONF_GUID]
-        self.mail_piece_id = mail_piece_id
-        self.authenticating = False
-        self.token_manager = TokenManager(hass, session, data)
-
-    async def _async_update_data(self):
-        """Fetch data from API endpoint."""
-        if self.authenticating:
-            # Return early or set a pending state instead of making an API call
-            return {"status": "pending"}
-
-        if not self.access_token or not self.guid:
-            self.authenticating = True
-            updated_tokens = await self.token_manager.refresh_tokens()
-            self.authenticating = False
-
-            if updated_tokens:
-                self.access_token = updated_tokens.get(CONF_ACCESS_TOKEN)
-                self.guid = updated_tokens.get(CONF_GUID)
-            else:
-                raise UpdateFailed(
-                    "Failed to refresh tokens and missing essential data.")
-        try:
-
-            resp = await self._make_request()
-            if resp.status in [401, 429]:
-                self.authenticating = True
-                await self.token_manager.refresh_tokens()
-                self.authenticating = False
-                resp = await self._make_request()
-
-            body = await resp.json()
-            # Validate response structure
-            if not isinstance(body, dict):
-                raise ValueError("Unexpected response format")
-
-            return body
-
-        except InvalidAuth as err:
-            raise ConfigEntryAuthFailed from err
-        except RoyalMailError as err:
-            raise UpdateFailed(str(err)) from err
-        except ConfigEntryAuthFailed:
-            print("Authentication failed; keeping entities as is until fixed")
-            raise
-        except ValueError as err:
-            _LOGGER.exception("Value error occurred: %s", err)
-            raise UpdateFailed(f"Unexpected response: {err}") from err
-        except Exception as err:
-            _LOGGER.exception("Unexpected exception: %s", err)
-            raise UnknownError from err
-
-    async def _make_request(self):
-        """Make the API request."""
-        return await self.session.request(
-            method="GET",
-            url=MAILPIECE_URL.format(mailPieceId=self.mail_piece_id),
-            headers={
-                CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
-                CONF_ORIGIN: ORIGIN,
-                "Authorization": f"Bearer {self.access_token}"
-            },
-        )
-
-
-class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
-    """ Pending items coordinator"""
+class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
+    """ RoyalMaiMailPiecesCoordinator """
 
     def __init__(self, hass: HomeAssistant, session, data: dict) -> None:
         """Initialize coordinator."""
-        print("RoyalMailMailPiecesCoordinator")
         super().__init__(
             hass,
             _LOGGER,
@@ -327,7 +270,6 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
         """Fetch data from API endpoint."""
         if self.authenticating:
             # Return early or set a pending state instead of making an API call
-            print("authenticating")
             return {"status": "pending"}
 
         if not self.access_token or not self.guid:
@@ -343,35 +285,35 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
                     "Failed to refresh tokens and missing essential data.")
 
         try:
-            resp = await self._make_request()
-            if resp.status in [401, 429]:
+            respAllMailPieces = await self._make_request_all_mailpieces()
+            if respAllMailPieces.status in [401, 429]:
                 self.authenticating = True
                 await self.token_manager.refresh_tokens()
                 self.authenticating = False
-                resp = await self._make_request()
+                respAllMailPieces = await self._make_request_all_mailpieces()
 
-            body = await resp.json()
-            print("have mail pieces")
+            all_mailpieces = await respAllMailPieces.json()
             # Validate response structure
-            if not isinstance(body, dict):
+            if not isinstance(all_mailpieces, dict):
                 raise ValueError("Unexpected response format")
 
-            # Persist the updated tokens
-            entries = self.hass.config_entries.async_entries(DOMAIN)
-            for entry in entries:
-                print(entry)
-                # Update specific data in the entry
-                updated_data = entry.data.copy()
-                # Merge the import_data into the entry_data
-                updated_data.update(body)
-                print(updated_data)
-                # Update the entry with the new data
-                self.hass.config_entries.async_update_entry(
-                    entry,
-                    data=updated_data
-                )
+            mail_pieces = {
+                CONF_MAILPIECES: 0,
+                CONF_MP_DETAILS: {}
+            }
+            total_mail_pieces = 0
+            for mail_piece in all_mailpieces.get(CONF_MP_DETAILS):
+                mail_piece_id = mail_piece[CONF_MAILPIECE_ID]
+                respMailPiece = await self._make_request_mailpiece(mail_piece_id)
+                mail_piece = await respMailPiece.json()
 
-            return body
+                if 'errors' not in mail_piece:
+                    total_mail_pieces += 1
+                    mail_pieces[CONF_MP_DETAILS][mail_piece_id] = mail_piece.get(
+                        CONF_MAILPIECES)
+
+            mail_pieces[CONF_MAILPIECES] = total_mail_pieces
+            return mail_pieces
 
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed from err
@@ -387,12 +329,24 @@ class RoyalMailMailPiecesCoordinator(DataUpdateCoordinator):
             _LOGGER.exception("Unexpected exception: %s", err)
             raise UnknownError from err
 
-    async def _make_request(self):
+    async def _make_request_all_mailpieces(self):
         """Make the API request."""
         return await self.session.request(
             method="GET",
             url=MAILPIECES_URL.format(
                 guid=self.guid, ibmClientId=IBM_CLIENT_ID),
+            headers={
+                CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
+                CONF_ORIGIN: ORIGIN,
+                "Authorization": f"Bearer {self.access_token}"
+            },
+        )
+
+    async def _make_request_mailpiece(self, mail_piece_id: str):
+        """Make the API request."""
+        return await self.session.request(
+            method="GET",
+            url=MAILPIECE_URL.format(mailPieceId=mail_piece_id),
             headers={
                 CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
                 CONF_ORIGIN: ORIGIN,
@@ -406,7 +360,6 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, session, data: dict) -> None:
         """Initialize coordinator."""
-        print("RoyalMailTokensCoordinator")
         super().__init__(
             hass,
             _LOGGER,
@@ -454,21 +407,17 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
                 self.data[CONF_GUID] = body.get(CONF_GUID, None)
                 self.data[CONF_FIRST_NAME] = body.get(CONF_FIRST_NAME, None)
 
-                print(self.data)
                 # Validate response structure
                 if not isinstance(body, dict):
                     raise ValueError("Unexpected response format")
 
                 # Persist the updated tokens
                 entries = self.hass.config_entries.async_entries(DOMAIN)
-                print(entries)
                 for entry in entries:
-                    print(entry)
                     # Update specific data in the entry
                     updated_data = entry.data.copy()
                     # Merge the import_data into the entry_data
                     updated_data.update(body)
-                    print(updated_data)
                     # Update the entry with the new data
                     self.hass.config_entries.async_update_entry(
                         entry,

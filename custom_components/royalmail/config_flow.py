@@ -88,14 +88,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_import(self, import_data=None) -> FlowResult:
         """Handle the import step for the service call."""
-        print("async_step_import")
         if import_data is not None:
             try:
 
-                # Debugging: Print existing entries
                 existing_entries = self.hass.config_entries.async_entries(
                     DOMAIN)
-                print("Existing entries: %s", existing_entries[0].data)
 
                 # Check if an entry already exists with the same username
                 existing_entry = next(
@@ -106,15 +103,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 if existing_entry is not None:
                     entry_data = existing_entry.data
-                    print(f"entry_data: {entry_data}")
                     import_data[CONF_USERNAME] = entry_data[CONF_USERNAME]
-                    print(f"import_data: {import_data}")
 
                     # Update specific data in the entry
                     updated_data = existing_entry.data.copy()
                     # Merge the import_data into the entry_data
                     updated_data.update(import_data)
-                    print(updated_data)
                     # Update the entry with the new data
                     self.hass.config_entries.async_update_entry(
                         existing_entry,
@@ -126,7 +120,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updated_data = entry.data.copy()
                     # Merge the import_data into the entry_data
                     updated_data.update(entry_data)
-                    print(updated_data)
                     self.hass.config_entries.async_update_entry(
                         entry,
                         data=updated_data
@@ -149,31 +142,24 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth(self, user_input: Mapping[str, Any]) -> FlowResult:
         """Handle reauth step."""
-        print("async_step_reauth")
-        print(user_input)
 
         session = async_get_clientsession(self.hass)
         coordinator = RoyalMailTokensCoordinator(
             self.hass, session, user_input)
 
         await coordinator.async_refresh()
-        print(coordinator.data)
         if coordinator.last_exception is not None and user_input is not None:
-            print("reauth failed")
             raise InvalidAuth
-        print("reauth success")
 
         existing_entry = self.hass.config_entries.async_get_entry(
             self.context["entry_id"]
         )
-        print(existing_entry.data)
         user_input[CONF_ACCESS_TOKEN] = coordinator.data[CONF_ACCESS_TOKEN]
 
         # Update specific data in the entry
         updated_data = existing_entry.data.copy()
         # Merge the import_data into the entry_data
         updated_data.update(user_input)
-        print(updated_data)
         # Update the entry with the new data
         self.hass.config_entries.async_update_entry(
             existing_entry,
@@ -191,8 +177,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the re-auth step."""
-        print("async_step_reauth_confirm")
-        print(user_input)
         if user_input is not None:
             # Here you would handle any form submission from the user
             return self.async_create_entry(title="Re-authenticated", data=self.context["data"])

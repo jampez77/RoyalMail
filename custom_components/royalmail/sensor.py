@@ -4,7 +4,7 @@ from homeassistant.util import dt as dt_util
 import time
 from aiohttp import ClientSession
 from homeassistant.util.dt import DEFAULT_TIME_ZONE
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from typing import Any
 from aiohttp import ClientError
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -32,8 +32,7 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator
 )
 from .coordinator import (
-    RoyalMailMailPiecesCoordinator,
-    RoyalMailMailPieceCoordinator,
+    RoyalMaiMailPiecesCoordinator
 )
 
 MAILPIECES_SENSORS = [
@@ -53,40 +52,31 @@ async def get_sensors(
 ) -> list:
 
     data = dict(entry.data)
-    print("get_sensors")
-    print(data)
-    mailPiecesCoordinator = RoyalMailMailPiecesCoordinator(
-        hass, session, data)
 
-    await mailPiecesCoordinator.async_refresh()
+    rmCoordinator = RoyalMaiMailPiecesCoordinator(hass, session, data)
+
+    await rmCoordinator.async_config_entry_first_refresh()
+
+    rmData = rmCoordinator.data
+
+    mailPiecesSensors = [RoyalMailSensor(rmCoordinator, len(rmData[CONF_MP_DETAILS]), name, description)
+                         for description in MAILPIECES_SENSORS]
 
     mailPieceSensors = []
-    if CONF_MP_DETAILS in mailPiecesCoordinator.data and len(mailPiecesCoordinator.data[CONF_MP_DETAILS]) > 0:
+    for key, value in rmData[CONF_MP_DETAILS].items():
 
-        for mail_piece in mailPiecesCoordinator.data[CONF_MP_DETAILS]:
-            mail_piece_id = mail_piece[CONF_MAILPIECE_ID]
-
-            mailPieceCoordinator = RoyalMailMailPieceCoordinator(
-                hass, session, data, mail_piece_id)
-
-            await mailPieceCoordinator.async_refresh()
-
-            if mailPieceCoordinator.data is not None:
-                mailPieceSensors.append(
-                    RoyalMailSensor(
-                        coordinator=mailPieceCoordinator,
-                        name=name,
-                        value=None,
-                        description=SensorEntityDescription(
-                            key=CONF_MAILPIECE_ID,
-                            name=mail_piece_id,
-                            icon="mdi:package-variant-closed-remove"
-                        )
-                    )
+        mailPieceSensors.append(
+            RoyalMailSensor(
+                coordinator=rmCoordinator,
+                name=name,
+                value=None,
+                description=SensorEntityDescription(
+                    key=CONF_MAILPIECE_ID,
+                    name=key,
+                    icon="mdi:package-variant-closed-remove"
                 )
-
-    mailPiecesSensors = [RoyalMailSensor(mailPiecesCoordinator, len(mailPieceSensors), name, description)
-                         for description in MAILPIECES_SENSORS]
+            )
+        )
 
     return mailPiecesSensors + mailPieceSensors
 
@@ -98,7 +88,6 @@ async def async_setup_entry(
 ) -> None:
     """Setup sensors from a config entry created in the integrations UI."""
     config = hass.data[DOMAIN][entry.entry_id]
-    print("async_setup_entry")
     if entry.options:
         config.update(entry.options)
 
@@ -118,7 +107,6 @@ async def async_setup_platform(
 ) -> None:
     """Set up the sensor platform."""
     session = async_get_clientsession(hass)
-    print("async_setup_platform")
     name = config[CONF_USERNAME]
 
     sensors = await get_sensors(name, hass, config, session)
@@ -144,13 +132,13 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
             name=name,
             configuration_url="https://github.com/jampez77/RoyalMail/",
         )
+
         if description.key == CONF_MAILPIECE_ID:
-            self.data = coordinator.data.get(CONF_MAILPIECES, {})
+            self.data = coordinator.data.get(CONF_MP_DETAILS)[description.name]
             sensor_id = description.name.lower()
         else:
             self.data = value
             sensor_id = description.key.lower()
-
         # Set the unique ID based on domain, name, and sensor type
         self._attr_unique_id = f"{DOMAIN}-{name}-{sensor_id}".lower()
         self.entity_description = description
@@ -187,7 +175,6 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
 
         Only used by the generic entity update service.
         """
-        print(f"Updating sensor {self._attr_unique_id} - Starting update")
         try:
             self._available = True
 
@@ -221,12 +208,9 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
                         value = dt_utc.astimezone(user_timezone)
 
             self._state = value
-            print(
-                f"Updating sensor {self._attr_unique_id} - Update successful")
         except ClientError:
             self._available = False
             self._state = "Pending"
-            print("Error retrieving data from RoyalMail for sensor %s", self.name)
 
     @property
     def native_value(self) -> str | date | None:
