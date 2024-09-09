@@ -302,17 +302,18 @@ class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
                 CONF_MP_DETAILS: {}
             }
             total_mail_pieces = 0
-            for mail_piece in all_mailpieces.get(CONF_MP_DETAILS):
-                mail_piece_id = mail_piece[CONF_MAILPIECE_ID]
-                respMailPiece = await self._make_request_mailpiece(mail_piece_id)
-                mail_piece = await respMailPiece.json()
+            if CONF_MP_DETAILS in all_mailpieces and isinstance(all_mailpieces.get(CONF_MP_DETAILS), list):
+                for mail_piece in all_mailpieces.get(CONF_MP_DETAILS):
+                    mail_piece_id = mail_piece[CONF_MAILPIECE_ID]
+                    respMailPiece = await self._make_request_mailpiece(mail_piece_id)
+                    mail_piece = await respMailPiece.json()
 
-                if 'errors' not in mail_piece:
-                    total_mail_pieces += 1
-                    mail_pieces[CONF_MP_DETAILS][mail_piece_id] = mail_piece.get(
-                        CONF_MAILPIECES)
+                    if 'errors' not in mail_piece:
+                        total_mail_pieces += 1
+                        mail_pieces[CONF_MP_DETAILS][mail_piece_id] = mail_piece.get(
+                            CONF_MAILPIECES)
 
-            mail_pieces[CONF_MAILPIECES] = total_mail_pieces
+                mail_pieces[CONF_MAILPIECES] = total_mail_pieces
             return mail_pieces
 
         except InvalidAuth as err:

@@ -9,6 +9,7 @@
   "documentation": "https://github.com/jampez77/RoyalMail/",
   "homekit": {},
   "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/jampez77/RoyalMail/issues",
   "requirements": [],
   "ssdp": [],
   "version": "2024.9.1",
