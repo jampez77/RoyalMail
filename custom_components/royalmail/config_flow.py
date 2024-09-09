@@ -64,10 +64,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle the initial step."""
 
-        existing_entries = self._async_current_entries()
-        if existing_entries:
-            return self.async_abort(reason="already_configured")
-
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
