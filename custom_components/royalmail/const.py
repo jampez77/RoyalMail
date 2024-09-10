@@ -4,6 +4,7 @@ DOMAIN = "royalmail"
 CONF_IBM_CLIENT_ID = "x-ibm-client-id"
 IBM_CLIENT_ID = "e83f49c439b0ebc0b130692bcb8b1cde"
 TOKENS_URL = "https://api.royalmail.net/login/v1/tokens"
+IMAGE_URL = "https://api.royalmail.net{image}"
 PENDING_ITEMS_URL = "https://api.royalmail.net/track/v2/pending/items"
 MAILPIECES_URL = "https://api.royalmail.net/mailpieces/v3.1/user/{guid}/history/{ibmClientId}?limit=6"
 MAILPIECE_URL = "https://api.royalmail.net/mailpieces/v3.1/{mailPieceId}/events"
@@ -39,3 +40,10 @@ CONF_USER_ID = "userId"
 CONF_PRODUCT_NAME = "productName"
 PRODUCT_NAME = "ProductName"
 CONF_SUMMARY = "summary"
+CONF_DELIVERIES_TODAY = "deliveriesToday"
+CONF_LAST_EVENT_CODE = "lastEventCode"
+CONF_LAST_EVENT_DATE_TIME = "lastEventDateTime"
+DELIVERY_TRANSIT_EVENTS = ["EVNSR", "EVODO", "EVORI", "EVOAC",
+                           "EVAIE", "EVPPA", "EVDAV", "EVIMC", "EVDAC", "EVNRT", "EVOCO"]
+DELIVERY_DELIVERED_EVENTS = ["EVKSP", "EVKOP"]
+DELIVERY_TODAY_EVENTS = ["EVGPD"]

@@ -1,10 +1,8 @@
 """Royal Mail sensor platform."""
 from datetime import datetime, date
 from homeassistant.util import dt as dt_util
-import time
 from aiohttp import ClientSession
-from homeassistant.util.dt import DEFAULT_TIME_ZONE
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from typing import Any
 from aiohttp import ClientError
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -12,8 +10,14 @@ from .const import (
     DOMAIN,
     CONF_USERNAME,
     CONF_MAILPIECE_ID,
-    CONF_MAILPIECES,
+    CONF_DELIVERIES_TODAY,
     CONF_MP_DETAILS,
+    CONF_SUMMARY,
+    CONF_LAST_EVENT_CODE,
+    DELIVERY_TRANSIT_EVENTS,
+    DELIVERY_DELIVERED_EVENTS,
+    DELIVERY_TODAY_EVENTS,
+    CONF_LAST_EVENT_DATE_TIME
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo
@@ -32,7 +36,8 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator
 )
 from .coordinator import (
-    RoyalMaiMailPiecesCoordinator
+    RoyalMaiMailPiecesCoordinator,
+    RoyalMailRemoveMailPieceCoordinator
 )
 
 MAILPIECES_SENSORS = [
@@ -40,8 +45,43 @@ MAILPIECES_SENSORS = [
         key=CONF_MP_DETAILS,
         name="Mail Pieces",
         icon="mdi:package-variant-closed"
+    ),
+    SensorEntityDescription(
+        key=CONF_DELIVERIES_TODAY,
+        name="Delveries Today",
+        icon="mdi:truck-delivery"
     )
 ]
+
+
+def hasMailPieceExpired(hass: HomeAssistant, expiry_date_raw: str) -> bool:
+    """ Check if booking has expired """
+
+    user_timezone = dt_util.get_time_zone(hass.config.time_zone)
+
+    dt_utc = datetime.strptime(
+        expiry_date_raw, '%Y-%m-%dT%H:%M:%S%z').replace(tzinfo=user_timezone)
+    # Convert the datetime to the default timezone
+    expiry_date = dt_utc.astimezone(user_timezone)
+    return (datetime.today().timestamp() - expiry_date.timestamp()) >= 86400
+
+
+async def removeMailPiece(hass: HomeAssistant, mail_piece_id: str):
+    """ Remove expired booking """
+    entry = next(
+        (entry for entry in hass.config_entries.async_entries(DOMAIN)
+            if entry.data.get(CONF_MAILPIECE_ID) == mail_piece_id),
+        None
+    )
+
+    if entry is not None:
+        # Remove the config entry
+        await hass.config_entries.async_remove(entry.entry_id)
+
+
+def is_mailpiece_id_present(mp_details: list[dict], mailpiece_id: str) -> bool:
+    """Check if the given mailPieceId is in the mpDetails array."""
+    return any(item[CONF_MAILPIECE_ID] == mailpiece_id for item in mp_details)
 
 
 async def get_sensors(
@@ -59,24 +99,45 @@ async def get_sensors(
 
     rmData = rmCoordinator.data
 
-    mailPiecesSensors = [RoyalMailSensor(rmCoordinator, len(rmData[CONF_MP_DETAILS]), name, description)
-                         for description in MAILPIECES_SENSORS]
-
     mailPieceSensors = []
+
+    totalMailPieces = len(rmData[CONF_MP_DETAILS])
+
     for key, value in rmData[CONF_MP_DETAILS].items():
 
-        mailPieceSensors.append(
-            RoyalMailSensor(
-                coordinator=rmCoordinator,
-                name=name,
-                value=None,
-                description=SensorEntityDescription(
-                    key=CONF_MAILPIECE_ID,
-                    name=key,
-                    icon="mdi:package-variant-closed-remove"
-                )
-            )
-        )
+        if CONF_SUMMARY in value and CONF_LAST_EVENT_CODE in value[CONF_SUMMARY]:
+            lastEventCode = value[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+            lastEventDateTime = value[CONF_SUMMARY][CONF_LAST_EVENT_DATE_TIME]
+            if lastEventCode in DELIVERY_DELIVERED_EVENTS:
+                if hasMailPieceExpired(hass, lastEventDateTime):
+                    removeMailPieceCoordinator = RoyalMailRemoveMailPieceCoordinator(
+                        hass, session, data, key)
+
+                    await removeMailPieceCoordinator.async_refresh()
+
+                    remainingMailPieces = removeMailPieceCoordinator.data.get(
+                        CONF_MP_DETAILS)
+
+                    if is_mailpiece_id_present(remainingMailPieces, key) is False:
+                        await removeMailPiece(hass, key)
+                        totalMailPieces -= 1
+
+                else:
+                    mailPieceSensors.append(
+                        RoyalMailSensor(
+                            coordinator=rmCoordinator,
+                            name=name,
+                            value=None,
+                            description=SensorEntityDescription(
+                                key=CONF_MAILPIECE_ID,
+                                name=key,
+                                icon="mdi:package-variant-closed-remove"
+                            )
+                        )
+                    )
+
+    mailPiecesSensors = [RoyalMailSensor(rmCoordinator, totalMailPieces, name, description)
+                         for description in MAILPIECES_SENSORS]
 
     return mailPiecesSensors + mailPieceSensors
 
@@ -126,6 +187,7 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
     ) -> None:
         """Initialize."""
         super().__init__(coordinator)
+        self.coordinator = coordinator
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{name}")},
             manufacturer='Royal Mail',
@@ -160,13 +222,13 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
     def icon(self) -> str:
         """Return a representative icon of the timer."""
         if self.entity_description.key == CONF_MAILPIECE_ID:
-            if 'summary' in self.data and 'lastEventCode' in self.data['summary']:
-                lastEventCode = self.data['summary']['lastEventCode']
-                if lastEventCode in ["EVKSP", "EVKOP"]:
+            if CONF_SUMMARY in self.data and CONF_LAST_EVENT_CODE in self.data[CONF_SUMMARY]:
+                lastEventCode = self.data[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+                if lastEventCode in DELIVERY_DELIVERED_EVENTS:
                     return "mdi:package-variant-closed-check"
-                elif lastEventCode in ["EVGPD"]:
+                elif lastEventCode in DELIVERY_TODAY_EVENTS:
                     return "mdi:truck-delivery-outline"
-                elif lastEventCode in ["EVNSR", "EVODO", "EVORI", "EVOAC", "EVAIE", "EVPPA", "EVDAV", "EVIMC", "EVDAC", "EVNRT", "EVOCO"]:
+                elif lastEventCode in DELIVERY_TRANSIT_EVENTS:
                     return "mdi:transit-connection-variant"
         return self.entity_description.icon
 
@@ -184,6 +246,13 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
 
             if self.entity_description.key == CONF_MP_DETAILS:
                 value = self.data
+            elif self.entity_description.key == CONF_DELIVERIES_TODAY:
+                deliveries_today = []
+                for key, value in self.coordinator.data.get(CONF_MP_DETAILS).items():
+                    lastEventCode = value[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+                    if lastEventCode in DELIVERY_TODAY_EVENTS:
+                        deliveries_today.append(key)
+                value = len(deliveries_today)
             else:
                 value = self.data.get(self.entity_description.key)
 
@@ -231,5 +300,14 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
                             {f"{key}_{k}": v for k, v in value.items()})
                     else:
                         attributes[key] = value
+
+        if self.entity_description.key == CONF_DELIVERIES_TODAY:
+            deliveries_today = []
+            for key, value in self.coordinator.data.get(CONF_MP_DETAILS).items():
+                lastEventCode = value[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+                if lastEventCode in DELIVERY_TODAY_EVENTS:
+                    deliveries_today.append(key)
+            if len(deliveries_today) > 0:
+                attributes[CONF_DELIVERIES_TODAY] = deliveries_today
 
         return attributes
