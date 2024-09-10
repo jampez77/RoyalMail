@@ -35,7 +35,9 @@ Use this route only if you do not want to use [HACS](https://hacs.xyz/) and love
 
 ---
 ## Data 
-The integration creates a new entity for each parcel on you Royal Mail account with it's current delivery status, all other associated data are saved as attributes. Additionally there are entities for all mail pieces.
+The integration creates a new entity for each parcel on you Royal Mail account with it's current delivery status, all other associated data are saved as attributes. Additionally there are entities for total mail pieces and total number of mail pieces that are due to be delivered today.
+
+The integration will automatically remove a mail piece from your Royal Mail account and Home Assistant 24 hours after the delivery event.
 
 ## Contributing
 
