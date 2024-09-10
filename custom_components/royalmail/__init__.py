@@ -8,8 +8,10 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 from homeassistant.config_entries import ConfigEntryState
 from .services import async_setup_services, async_cleanup_services
+import homeassistant.helpers.config_validation as cv
 
 PLATFORMS = [Platform.SENSOR]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
