@@ -8,13 +8,15 @@ IMAGE_URL = "https://api.royalmail.net{image}"
 PENDING_ITEMS_URL = "https://api.royalmail.net/track/v2/pending/items"
 MAILPIECES_URL = "https://api.royalmail.net/mailpieces/v3.1/user/{guid}/history/{ibmClientId}?limit=6"
 MAILPIECE_URL = "https://api.royalmail.net/mailpieces/v3.1/{mailPieceId}/events"
-SUBSCRIPTION_URL = "https://api.royalmail.net/pushapi/app/v2/subscription/track/{mailPieceId}"
+SUBSCRIPTION_URL = (
+    "https://api.royalmail.net/pushapi/app/v2/subscription/track/{mailPieceId}"
+)
 PUSH_NOTIFICATION_URL = "https://rmappgateway.dockethub.com/rmpushnotification/api/v3/user/{guid}/trackedmailpieces/{mailPieceId}"
 TRACKING_ALIAS_URL = "https://api.royalmail.net/trackingalias"
 REMOVE_MAILPIECE_URL = "https://api.royalmail.net/mailpieces/v3.1/user/{guid}/history/{ibmClientId}?mailPieceId={mailPieceId}"
 CONF_TRACK_ITEM = "track_your_item"
 CONF_STOP_TRACKING_ITEM = "stop_tracking_item"
-CONF_REFERENCE_NUMBER = "referenceNumber"
+CONF_REFERENCE_NUMBER = "reference_number"
 CONF_DEVICE_ID = "device_id"
 CONF_GRANT_TYPE = "grant_type"
 CONF_RESULTS = "results"
@@ -43,7 +45,18 @@ CONF_SUMMARY = "summary"
 CONF_DELIVERIES_TODAY = "deliveriesToday"
 CONF_LAST_EVENT_CODE = "lastEventCode"
 CONF_LAST_EVENT_DATE_TIME = "lastEventDateTime"
-DELIVERY_TRANSIT_EVENTS = ["EVNSR", "EVODO", "EVORI", "EVOAC",
-                           "EVAIE", "EVPPA", "EVDAV", "EVIMC", "EVDAC", "EVNRT", "EVOCO"]
+DELIVERY_TRANSIT_EVENTS = [
+    "EVNSR",
+    "EVODO",
+    "EVORI",
+    "EVOAC",
+    "EVAIE",
+    "EVPPA",
+    "EVDAV",
+    "EVIMC",
+    "EVDAC",
+    "EVNRT",
+    "EVOCO",
+]
 DELIVERY_DELIVERED_EVENTS = ["EVKSP", "EVKOP"]
 DELIVERY_TODAY_EVENTS = ["EVGPD"]

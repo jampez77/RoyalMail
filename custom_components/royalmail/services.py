@@ -7,18 +7,23 @@ from .const import (
     CONF_TRACK_ITEM,
     CONF_STOP_TRACKING_ITEM,
     CONF_MAILPIECE_ID,
-    CONF_MP_DETAILS
+    CONF_MP_DETAILS,
 )
 from homeassistant.helpers.entity_registry import (
     async_get,
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from .coordinator import RoyalMailTrackNewItemCoordinator, RoyalMailRemoveMailPieceCoordinator
+from .coordinator import (
+    RoyalMailTrackNewItemCoordinator,
+    RoyalMailRemoveMailPieceCoordinator,
+)
 import functools
 
-SERVICE_SCHEMA = vol.Schema({
-    vol.Required(CONF_REFERENCE_NUMBER): cv.string,
-})
+SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_REFERENCE_NUMBER): cv.string,
+    }
+)
 
 
 def async_cleanup_services(hass: HomeAssistant) -> None:
@@ -39,7 +44,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
             CONF_STOP_TRACKING_ITEM,
             functools.partial(stop_tracking_item, hass),
             SERVICE_SCHEMA,
-        )
+        ),
     ]
     for name, method, schema in services:
         if hass.services.has_service(DOMAIN, name):
@@ -48,6 +53,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
 
 
 async def track_new_item(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Track new item."""
     reference = call.data.get(CONF_REFERENCE_NUMBER)
 
     session = async_get_clientsession(hass)
@@ -55,12 +61,11 @@ async def track_new_item(hass: HomeAssistant, call: ServiceCall) -> None:
     entries = hass.config_entries.async_entries(DOMAIN)
 
     if not entries:
-        return
+        return False
 
     entry_data = entries[0].data
 
-    coordinator = RoyalMailTrackNewItemCoordinator(
-        hass, session, entry_data, reference)
+    coordinator = RoyalMailTrackNewItemCoordinator(hass, session, entry_data, reference)
 
     await coordinator.async_refresh()
 
@@ -71,10 +76,10 @@ async def track_new_item(hass: HomeAssistant, call: ServiceCall) -> None:
 
     # Initiate the config flow with the "import" step
     await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": "import"},
-        data=data
+        DOMAIN, context={"source": "import"}, data=data
     )
+
+    return True
 
 
 async def stop_tracking_item(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -93,19 +98,20 @@ async def stop_tracking_item(hass: HomeAssistant, call: ServiceCall) -> None:
     entity_registry = async_get(hass)
 
     entities = [
-        entity_id for entity_id, entry in entity_registry.entities.items()
-        if entry.platform == DOMAIN and str(reference).lower() in entry.entity_id.lower()
+        entity_id
+        for entity_id, entry in entity_registry.entities.items()
+        if entry.platform == DOMAIN
+        and str(reference).lower() in entry.entity_id.lower()
     ]
 
     for entity in entities:
-
         removeMailPieceCoordinator = RoyalMailRemoveMailPieceCoordinator(
-            hass, session, entry_data, reference)
+            hass, session, entry_data, reference
+        )
 
         await removeMailPieceCoordinator.async_refresh()
 
-        remainingMailPieces = removeMailPieceCoordinator.data.get(
-            CONF_MP_DETAILS)
+        remainingMailPieces = removeMailPieceCoordinator.data.get(CONF_MP_DETAILS)
 
         if is_mailpiece_id_present(remainingMailPieces, reference) is False:
             entity_registry.async_remove(entity)

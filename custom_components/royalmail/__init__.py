@@ -1,4 +1,5 @@
 """The Royal Mail integration."""
+
 from __future__ import annotations
 import asyncio
 from homeassistant.helpers.typing import ConfigType
@@ -24,8 +25,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_setup_services(hass)
 
     # Registers update listener to update config entry when options are updated.
-    unsub_options_update_listener = entry.add_update_listener(
-        options_update_listener)
+    unsub_options_update_listener = entry.add_update_listener(options_update_listener)
     # Store a reference to the unsubscribe function to cleanup if an entry is unloaded.
     hass_data["unsub_options_update_listener"] = unsub_options_update_listener
     hass.data[DOMAIN][entry.entry_id] = hass_data
@@ -36,7 +36,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def options_update_listener(hass: HomeAssistant, config_entry: ConfigEntry):
     """Handle options update."""
-    if config_entry.state == ConfigEntryState.LOADED:
+    entry_state = hass.config_entries.async_get_entry(config_entry.entry_id).state
+
+    # Proceed only if the entry is in a valid state (loaded, etc.)
+    if entry_state not in (
+        ConfigEntryState.SETUP_IN_PROGRESS,
+        ConfigEntryState.SETUP_RETRY,
+    ):
         await hass.config_entries.async_reload(config_entry.entry_id)
 
 
@@ -44,7 +50,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = all(
         await asyncio.gather(
-            *[hass.config_entries.async_forward_entry_unload(entry, platform) for platform in PLATFORMS]
+            *[
+                hass.config_entries.async_forward_entry_unload(entry, platform)
+                for platform in PLATFORMS
+            ]
         )
     )
     # Remove options_update_listener.

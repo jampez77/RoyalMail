@@ -21,7 +21,7 @@
         "stop_tracking_item": {
             "description": "Stop tracking a Royal Mail parcel",
             "fields": {
-                "referenceNumber": {
+                "reference_number": {
                     "description": "e.g. AA123456789US",
                     "name": "Your reference number"
                 }
@@ -31,7 +31,7 @@
         "track_your_item": {
             "description": "Track a Royal Mail parcel",
             "fields": {
-                "referenceNumber": {
+                "reference_number": {
                     "description": "e.g. AA123456789US",
                     "name": "Your reference number"
                 }

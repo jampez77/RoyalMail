@@ -1,4 +1,5 @@
 """Royal Mail Coordinator."""
+
 from datetime import timedelta
 import logging
 from homeassistant.const import CONTENT_TYPE_JSON
@@ -42,24 +43,28 @@ from .const import (
     REMOVE_MAILPIECE_URL,
     CONF_MP_DETAILS,
     CONF_SUMMARY,
-    CONF_PRODUCT_NAME
+    CONF_PRODUCT_NAME,
 )
 from asyncio import Lock
+
 _LOGGER = logging.getLogger(__name__)
 
 
 class TokenManager:
+    """Token Manager."""
+
     def __init__(self, hass: HomeAssistant, session, data) -> None:
+        """Init."""
         self.hass = hass
         self.session = session
         self.data = data
         self.lock = Lock()
 
     async def refresh_tokens(self):
+        """Refresh Tokens."""
         async with self.lock:
             # Perform the refresh logic
-            coordinator = RoyalMailTokensCoordinator(
-                self.hass, self.session, self.data)
+            coordinator = RoyalMailTokensCoordinator(self.hass, self.session, self.data)
             new_tokens = await coordinator.refresh_tokens()
             if new_tokens:
                 self.data.update(new_tokens)
@@ -71,14 +76,15 @@ class TokenManager:
         for entry in entries:
             updated_data = entry.data.copy()
             updated_data.update(self.data)
-            self.hass.config_entries.async_update_entry(
-                entry, data=updated_data)
+            self.hass.config_entries.async_update_entry(entry, data=updated_data)
 
 
 class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
-    """ Pending items coordinator"""
+    """Remove Mail Piece coordinator."""
 
-    def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str) -> None:
+    def __init__(
+        self, hass: HomeAssistant, session, data: dict, mail_piece_id: str
+    ) -> None:
         """Initialize coordinator."""
         super().__init__(
             hass,
@@ -99,14 +105,13 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
         try:
-
             mail_piece = await self.session.request(
                 method="GET",
                 url=MAILPIECE_URL.format(mailPieceId=self.mail_piece_id),
                 headers={
                     CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
                     CONF_ORIGIN: ORIGIN,
-                    "Authorization": f"Bearer {self.access_token}"
+                    "Authorization": f"Bearer {self.access_token}",
                 },
             )
 
@@ -117,45 +122,48 @@ class RoyalMailRemoveMailPieceCoordinator(DataUpdateCoordinator):
             push_notification = await self.session.request(
                 method="DELETE",
                 url=PUSH_NOTIFICATION_URL.format(
-                    guid=self.guid, mailPieceId=self.mail_piece_id),
-                headers={
-                    ACCESS_TOKEN: self.access_token
-                },
-                json={
-                    PRODUCT_NAME: product_name
-                }
+                    guid=self.guid, mailPieceId=self.mail_piece_id
+                ),
+                headers={ACCESS_TOKEN: self.access_token},
+                json={PRODUCT_NAME: product_name},
             )
             if push_notification.status == 201:
                 removeMailPiece = await self.session.request(
                     method="DELETE",
                     url=REMOVE_MAILPIECE_URL.format(
-                        guid=self.guid, ibmClientId=IBM_CLIENT_ID, mailPieceId=self.mail_piece_id),
+                        guid=self.guid,
+                        ibmClientId=IBM_CLIENT_ID,
+                        mailPieceId=self.mail_piece_id,
+                    ),
                     headers={
                         CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
                         CONF_ORIGIN: ORIGIN,
-                        "Authorization": f"Bearer {self.access_token}"
+                        "Authorization": f"Bearer {self.access_token}",
                     },
                 )
 
                 body = await removeMailPiece.json()
-                return body
 
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed from err
         except RoyalMailError as err:
             raise UpdateFailed(str(err)) from err
         except ValueError as err:
-            _LOGGER.exception("Value error occurred: %s", err)
+            _LOGGER.error("Value error occurred: %s", err)
             raise UpdateFailed(f"Unexpected response: {err}") from err
         except Exception as err:
-            _LOGGER.exception("Unexpected exception: %s", err)
+            _LOGGER.error("Unexpected exception: %s", err)
             raise UnknownError from err
+        else:
+            return body
 
 
 class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
-    """ Pending items coordinator"""
+    """Track new mail pieces coordinator."""
 
-    def __init__(self, hass: HomeAssistant, session, data: dict, mail_piece_id: str) -> None:
+    def __init__(
+        self, hass: HomeAssistant, session, data: dict, mail_piece_id: str
+    ) -> None:
         """Initialize coordinator."""
 
         super().__init__(
@@ -171,6 +179,10 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
         self.guid = data[CONF_GUID]
         self.mail_piece_id = mail_piece_id
 
+    def unableToTrackMailPiece(self):
+        """Unable to track mail piece."""
+        raise NotFoundError(f"New item: Unable to track {self.mail_piece_id}")
+
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
         try:
@@ -180,7 +192,7 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
                 headers={
                     CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
                     CONF_ORIGIN: ORIGIN,
-                    "Authorization": f"Bearer {self.access_token}"
+                    "Authorization": f"Bearer {self.access_token}",
                 },
             )
 
@@ -195,7 +207,7 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
                     CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
                     CONF_ORIGIN: ORIGIN,
                     CONF_CONTENT_TYPE: CONTENT_TYPE,
-                    "Authorization": f"Bearer {self.access_token}"
+                    "Authorization": f"Bearer {self.access_token}",
                 },
             )
 
@@ -203,16 +215,12 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
                 push_notification = await self.session.request(
                     method="PUT",
                     url=PUSH_NOTIFICATION_URL.format(
-                        guid=self.guid, mailPieceId=self.mail_piece_id),
-                    headers={
-                        ACCESS_TOKEN: self.access_token
-                    },
-                    json={
-                        PRODUCT_NAME: product_name
-                    }
+                        guid=self.guid, mailPieceId=self.mail_piece_id
+                    ),
+                    headers={ACCESS_TOKEN: self.access_token},
+                    json={PRODUCT_NAME: product_name},
                 )
                 if push_notification.status == 201:
-
                     tracking_alias = await self.session.request(
                         method="GET",
                         url=TRACKING_ALIAS_URL,
@@ -222,30 +230,30 @@ class RoyalMailTrackNewItemCoordinator(DataUpdateCoordinator):
                             CONF_CONTENT_TYPE: CONTENT_TYPE,
                             CONF_USER_ID: self.guid,
                             CONF_MAILPIECE_ID: self.mail_piece_id,
-                            "Authorization": f"Bearer {self.access_token}"
+                            "Authorization": f"Bearer {self.access_token}",
                         },
                     )
                     body = await tracking_alias.json()
-                    return body
 
             else:
-                raise NotFoundError(
-                    f"New item: Unable to track {self.mail_piece_id}")
+                self.unableToTrackMailPiece()
 
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed from err
         except RoyalMailError as err:
             raise UpdateFailed(str(err)) from err
         except ValueError as err:
-            _LOGGER.exception("Value error occurred: %s", err)
+            _LOGGER.error("Value error occurred: %s", err)
             raise UpdateFailed(f"Unexpected response: {err}") from err
         except Exception as err:
-            _LOGGER.exception("Unexpected exception: %s", err)
+            _LOGGER.error("Unexpected exception: %s", err)
             raise UnknownError from err
+        else:
+            return body
 
 
 class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
-    """ RoyalMaiMailPiecesCoordinator """
+    """RoyalMaiMailPiecesCoordinator."""
 
     def __init__(self, hass: HomeAssistant, session, data: dict) -> None:
         """Initialize coordinator."""
@@ -259,9 +267,9 @@ class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
         )
         self.authenticating = False
         self.session = session
-        self.access_token = data.get(CONF_ACCESS_TOKEN, None)
-        self.refresh_token = data.get(CONF_REFRESH_TOKEN, None)
-        self.guid = data.get(CONF_GUID, None)
+        self.access_token = data.get(CONF_ACCESS_TOKEN)
+        self.refresh_token = data.get(CONF_REFRESH_TOKEN)
+        self.guid = data.get(CONF_GUID)
         self.device_id = str(uuid.uuid4().hex.upper()[0:6])
         self.data = data
         self.token_manager = TokenManager(hass, session, data)
@@ -282,7 +290,13 @@ class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
                 self.guid = updated_tokens.get(CONF_GUID)
             else:
                 raise UpdateFailed(
-                    "Failed to refresh tokens and missing essential data.")
+                    "Failed to refresh tokens and missing essential data."
+                )
+
+        def validateResponse(all_mailpieces):
+            """Validate Response."""
+            if not isinstance(all_mailpieces, dict):
+                raise TypeError("Unexpected response format")
 
         try:
             respAllMailPieces = await self._make_request_all_mailpieces()
@@ -293,53 +307,51 @@ class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
                 respAllMailPieces = await self._make_request_all_mailpieces()
 
             all_mailpieces = await respAllMailPieces.json()
-            # Validate response structure
-            if not isinstance(all_mailpieces, dict):
-                raise ValueError("Unexpected response format")
 
-            mail_pieces = {
-                CONF_MAILPIECES: 0,
-                CONF_MP_DETAILS: {}
-            }
+            validateResponse(all_mailpieces)
+
+            mail_pieces = {CONF_MAILPIECES: 0, CONF_MP_DETAILS: {}}
             total_mail_pieces = 0
-            if CONF_MP_DETAILS in all_mailpieces and isinstance(all_mailpieces.get(CONF_MP_DETAILS), list):
+            if CONF_MP_DETAILS in all_mailpieces and isinstance(
+                all_mailpieces.get(CONF_MP_DETAILS), list
+            ):
                 for mail_piece in all_mailpieces.get(CONF_MP_DETAILS):
                     mail_piece_id = mail_piece[CONF_MAILPIECE_ID]
                     respMailPiece = await self._make_request_mailpiece(mail_piece_id)
                     mail_piece = await respMailPiece.json()
 
-                    if 'errors' not in mail_piece:
+                    if "errors" not in mail_piece:
                         total_mail_pieces += 1
                         mail_pieces[CONF_MP_DETAILS][mail_piece_id] = mail_piece.get(
-                            CONF_MAILPIECES)
+                            CONF_MAILPIECES
+                        )
 
                 mail_pieces[CONF_MAILPIECES] = total_mail_pieces
-            return mail_pieces
 
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed from err
         except RoyalMailError as err:
             raise UpdateFailed(str(err)) from err
-        except ConfigEntryAuthFailed:
-            print("Authentication failed; keeping entities as is until fixed")
-            raise
+        except ConfigEntryAuthFailed as err:
+            raise ConfigEntryAuthFailed(f"Config Entry Failed: {err}") from err
         except ValueError as err:
-            _LOGGER.exception("Value error occurred: %s", err)
+            _LOGGER.error("Value error occurred: %s", err)
             raise UpdateFailed(f"Unexpected response: {err}") from err
         except Exception as err:
-            _LOGGER.exception("Unexpected exception: %s", err)
+            _LOGGER.error("Unexpected exception: %s", err)
             raise UnknownError from err
+        else:
+            return mail_pieces
 
     async def _make_request_all_mailpieces(self):
         """Make the API request."""
         return await self.session.request(
             method="GET",
-            url=MAILPIECES_URL.format(
-                guid=self.guid, ibmClientId=IBM_CLIENT_ID),
+            url=MAILPIECES_URL.format(guid=self.guid, ibmClientId=IBM_CLIENT_ID),
             headers={
                 CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
                 CONF_ORIGIN: ORIGIN,
-                "Authorization": f"Bearer {self.access_token}"
+                "Authorization": f"Bearer {self.access_token}",
             },
         )
 
@@ -351,7 +363,7 @@ class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
             headers={
                 CONF_IBM_CLIENT_ID: IBM_CLIENT_ID,
                 CONF_ORIGIN: ORIGIN,
-                "Authorization": f"Bearer {self.access_token}"
+                "Authorization": f"Bearer {self.access_token}",
             },
         )
 
@@ -379,38 +391,44 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
                 CONF_USERNAME: data[CONF_USERNAME],
                 CONF_PASSWORD: data[CONF_PASSWORD],
                 CONF_GRANT_TYPE: CONF_PASSWORD,
-                CONF_DEVICE_ID: self.device_id
+                CONF_DEVICE_ID: self.device_id,
             }
         elif CONF_REFRESH_TOKEN in data:
             self.body = {
                 CONF_REFRESH_TOKEN: data[CONF_REFRESH_TOKEN],
                 CONF_GRANT_TYPE: CONF_REFRESH_TOKEN,
-                CONF_DEVICE_ID: self.device_id
+                CONF_DEVICE_ID: self.device_id,
             }
 
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
+
+        def validateResponse(all_mailpieces):
+            """Validate Response."""
+            if not isinstance(all_mailpieces, dict):
+                raise TypeError("Unexpected response format")
+
+        def handle_status_code(status_code):
+            """Handle status code."""
+            if status_code == 401:
+                raise InvalidAuth("Invalid authentication credentials")
+            if status_code == 429:
+                raise APIRatelimitExceeded("API rate limit exceeded.")
+
         try:
             if self.body is not None:
                 resp = await self._make_request()
 
-                if resp.status == 401:
-                    raise InvalidAuth("Invalid authentication credentials")
-                if resp.status == 429:
-                    raise APIRatelimitExceeded("API rate limit exceeded.")
+                handle_status_code(resp.status)
 
                 body = await resp.json()
 
-                self.data[CONF_ACCESS_TOKEN] = body.get(
-                    CONF_ACCESS_TOKEN, None)
-                self.data[CONF_REFRESH_TOKEN] = body.get(
-                    CONF_REFRESH_TOKEN, None)
+                self.data[CONF_ACCESS_TOKEN] = body.get(CONF_ACCESS_TOKEN, None)
+                self.data[CONF_REFRESH_TOKEN] = body.get(CONF_REFRESH_TOKEN, None)
                 self.data[CONF_GUID] = body.get(CONF_GUID, None)
                 self.data[CONF_FIRST_NAME] = body.get(CONF_FIRST_NAME, None)
 
-                # Validate response structure
-                if not isinstance(body, dict):
-                    raise ValueError("Unexpected response format")
+                validateResponse(body)
 
                 # Persist the updated tokens
                 entries = self.hass.config_entries.async_entries(DOMAIN)
@@ -421,8 +439,7 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
                     updated_data.update(body)
                     # Update the entry with the new data
                     self.hass.config_entries.async_update_entry(
-                        entry,
-                        data=updated_data
+                        entry, data=updated_data
                     )
 
                 return body
@@ -431,14 +448,13 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
             raise ConfigEntryAuthFailed from err
         except RoyalMailError as err:
             raise UpdateFailed(str(err)) from err
-        except ConfigEntryAuthFailed:
-            print("Authentication failed; keeping entities as is until fixed")
-            raise
+        except ConfigEntryAuthFailed as err:
+            raise ConfigEntryAuthFailed(f"Config Entry failed: {err}") from err
         except ValueError as err:
-            _LOGGER.exception("Value error occurred: %s", err)
+            _LOGGER.error("Value error occurred: %s", err)
             raise UpdateFailed(f"Unexpected response: {err}") from err
         except Exception as err:
-            _LOGGER.exception("Unexpected exception: %s", err)
+            _LOGGER.error("Unexpected exception: %s", err)
             raise UnknownError from err
 
     async def _make_request(self):

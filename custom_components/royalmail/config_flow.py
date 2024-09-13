@@ -1,4 +1,5 @@
 """Config flow for Royal Mail integration."""
+
 from __future__ import annotations
 
 import logging
@@ -22,7 +23,7 @@ from .const import (
     CONF_GUID,
     CONF_USER_ID,
     CONF_RESULTS,
-    CONF_ACCESS_TOKEN
+    CONF_ACCESS_TOKEN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 @callback
 def async_get_options_flow(config_entry):
+    """Async options flow."""
     return RoyalMailFlowHandler(config_entry)
 
 
@@ -66,7 +68,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors: dict[str, str] = {}
         if user_input is not None:
-
             await self.async_set_unique_id(user_input[CONF_USERNAME])
             self._abort_if_unique_id_configured()
 
@@ -94,14 +95,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(import_data[CONF_USERNAME])
                 self._abort_if_unique_id_configured()
 
-                existing_entries = self.hass.config_entries.async_entries(
-                    DOMAIN)
+                existing_entries = self.hass.config_entries.async_entries(DOMAIN)
 
                 # Check if an entry already exists with the same username
                 existing_entry = next(
-                    (entry for entry in existing_entries
-                     if entry.data.get(CONF_GUID) == import_data.get(CONF_RESULTS)[0][CONF_USER_ID]),
-                    None
+                    (
+                        entry
+                        for entry in existing_entries
+                        if entry.data.get(CONF_GUID)
+                        == import_data.get(CONF_RESULTS)[0][CONF_USER_ID]
+                    ),
+                    None,
                 )
 
                 if existing_entry is not None:
@@ -114,8 +118,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updated_data.update(import_data)
                     # Update the entry with the new data
                     self.hass.config_entries.async_update_entry(
-                        existing_entry,
-                        data=updated_data
+                        existing_entry, data=updated_data
                     )
 
                 for entry in self._async_current_entries():
@@ -124,31 +127,28 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # Merge the import_data into the entry_data
                     updated_data.update(entry_data)
                     self.hass.config_entries.async_update_entry(
-                        entry,
-                        data=updated_data
+                        entry, data=updated_data
                     )
                     # Ensure that the config entry is fully set up before attempting a reload
                     if entry.state == ConfigEntryState.LOADED:
                         self.hass.async_create_task(
-                            self.hass.config_entries.async_reload(
-                                entry.entry_id)
+                            self.hass.config_entries.async_reload(entry.entry_id)
                         )
-                    else:
-                        # If the entry is not yet fully loaded, you might want to log a message or handle it accordingly
-                        print("Config entry is not fully loaded; cannot reload yet.")
 
                 return self.async_abort(reason="entry_updated")
 
             except Exception as e:  # pylint: disable=broad-except
-                _LOGGER.error(f"Failed to import booking: {e}")
+                _LOGGER.error("Failed to import booking: {e}")
                 return self.async_abort(reason="import_failed")
+
+                # Explicitly handle the case where import_data is None
+        return self.async_abort(reason="no_import_data")
 
     async def async_step_reauth(self, user_input: Mapping[str, Any]) -> FlowResult:
         """Handle reauth step."""
 
         session = async_get_clientsession(self.hass)
-        coordinator = RoyalMailTokensCoordinator(
-            self.hass, session, user_input)
+        coordinator = RoyalMailTokensCoordinator(self.hass, session, user_input)
 
         await coordinator.async_refresh()
         if coordinator.last_exception is not None and user_input is not None:
@@ -164,16 +164,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Merge the import_data into the entry_data
         updated_data.update(user_input)
         # Update the entry with the new data
-        self.hass.config_entries.async_update_entry(
-            existing_entry,
-            data=updated_data
-        )
+        self.hass.config_entries.async_update_entry(existing_entry, data=updated_data)
         # Ensure that the config entry is fully set up before attempting a reload
         if existing_entry.state == ConfigEntryState.LOADED:
             await self.hass.config_entries.async_reload(existing_entry.entry_id)
-        else:
-            # If the entry is not yet fully loaded, you might want to log a message or handle it accordingly
-            print("Config entry is not fully loaded; cannot reload yet.")
+
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
@@ -182,7 +177,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the re-auth step."""
         if user_input is not None:
             # Here you would handle any form submission from the user
-            return self.async_create_entry(title="Re-authenticated", data=self.context["data"])
+            return self.async_create_entry(
+                title="Re-authenticated", data=self.context["data"]
+            )
 
         # Show a confirmation form or return directly depending on your flow
         return self.async_show_form(
@@ -192,10 +189,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class RoyalMailFlowHandler(config_entries.OptionsFlow):
+    """Royal Mail flow handler."""
+
     def __init__(self, config_entry) -> None:
+        """Init."""
         self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None) -> FlowResult:
+        """Init."""
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({}),
