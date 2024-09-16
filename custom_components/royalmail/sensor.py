@@ -44,7 +44,7 @@ MAILPIECES_SENSORS = [
         key=CONF_MP_DETAILS, name="Mail Pieces", icon="mdi:package-variant-closed"
     ),
     SensorEntityDescription(
-        key=CONF_DELIVERIES_TODAY, name="Delveries Today", icon="mdi:truck-delivery"
+        key=CONF_DELIVERIES_TODAY, name="Deliveries Today", icon="mdi:truck-delivery"
     ),
 ]
 
@@ -183,12 +183,13 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
 
         if description.key == CONF_MAILPIECE_ID:
             self.data = coordinator.data.get(CONF_MP_DETAILS)[description.name]
-            sensor_id = description.name.lower()
+            sensor_id = f"{DOMAIN}_{description.name}".lower()
         else:
             self.data = value
-            sensor_id = description.key.lower()
+            sensor_id = f"{DOMAIN}_{description.key}".lower()
         # Set the unique ID based on domain, name, and sensor type
         self._attr_unique_id = f"{DOMAIN}-{name}-{sensor_id}".lower()
+        self.entity_id = f"sensor.{sensor_id}".lower()
         self.entity_description = description
         self._name = name
         self._sensor_id = sensor_id
