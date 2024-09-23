@@ -1,23 +1,26 @@
-from homeassistant.core import HomeAssistant, ServiceCall
+"""Services for Royal Mail Integration."""
+
+import functools
+
 import voluptuous as vol
-from homeassistant.helpers import config_validation as cv
+
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv, entity_registry as er
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
 from .const import (
-    DOMAIN,
-    CONF_REFERENCE_NUMBER,
-    CONF_TRACK_ITEM,
-    CONF_STOP_TRACKING_ITEM,
     CONF_MAILPIECE_ID,
     CONF_MP_DETAILS,
+    CONF_REFERENCE_NUMBER,
+    CONF_STOP_TRACKING_ITEM,
+    CONF_TRACK_ITEM,
+    DOMAIN,
 )
-from homeassistant.helpers.entity_registry import (
-    async_get,
-)
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .coordinator import (
-    RoyalMailTrackNewItemCoordinator,
     RoyalMailRemoveMailPieceCoordinator,
+    RoyalMailTrackNewItemCoordinator,
 )
-import functools
 
 SERVICE_SCHEMA = vol.Schema(
     {
@@ -70,7 +73,7 @@ async def track_new_item(hass: HomeAssistant, call: ServiceCall) -> None:
     await coordinator.async_refresh()
 
     if coordinator.last_exception is not None:
-        return False
+        return HomeAssistantError(f"There was an unknown problem tracking {reference}")
 
     data = dict(coordinator.data)
 
@@ -95,7 +98,7 @@ async def stop_tracking_item(hass: HomeAssistant, call: ServiceCall) -> None:
 
     entry_data = entries[0].data
 
-    entity_registry = async_get(hass)
+    entity_registry = er.async_get(hass)
 
     entities = [
         entity_id

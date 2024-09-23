@@ -2,29 +2,29 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
 from typing import Any
-from collections.abc import Mapping
-from homeassistant.core import callback
-from homeassistant.config_entries import ConfigEntryState
+
 import voluptuous as vol
-from .coordinator import RoyalMailTokensCoordinator
+
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers import device_registry as dr
+
 from .const import (
-    DOMAIN,
-    CONF_USERNAME,
-    CONF_PASSWORD,
-    CONF_REFRESH_TOKEN,
-    CONF_GUID,
-    CONF_USER_ID,
-    CONF_RESULTS,
     CONF_ACCESS_TOKEN,
+    CONF_GUID,
+    CONF_PASSWORD,
+    CONF_RESULTS,
+    CONF_USER_ID,
+    CONF_USERNAME,
+    DOMAIN,
 )
+from .coordinator import RoyalMailTokensCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 

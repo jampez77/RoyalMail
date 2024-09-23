@@ -1,42 +1,41 @@
 """Royal Mail sensor platform."""
 
-from datetime import datetime, date
-from homeassistant.util import dt as dt_util
-from aiohttp import ClientSession
-from homeassistant.core import HomeAssistant
+from datetime import date, datetime
 from typing import Any
-from aiohttp import ClientError
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-from .const import (
-    DOMAIN,
-    CONF_USERNAME,
-    CONF_MAILPIECE_ID,
-    CONF_DELIVERIES_TODAY,
-    CONF_MP_DETAILS,
-    CONF_SUMMARY,
-    CONF_LAST_EVENT_CODE,
-    DELIVERY_TRANSIT_EVENTS,
-    DELIVERY_DELIVERED_EVENTS,
-    DELIVERY_TODAY_EVENTS,
-    CONF_LAST_EVENT_DATE_TIME,
-)
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers import device_registry as dr
+
+from aiohttp import ClientSession
+
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
-    SensorDeviceClass,
 )
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
+    DataUpdateCoordinator,
 )
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
+
+from .const import (
+    CONF_DELIVERIES_TODAY,
+    CONF_LAST_EVENT_CODE,
+    CONF_LAST_EVENT_DATE_TIME,
+    CONF_MAILPIECE_ID,
+    CONF_MP_DETAILS,
+    CONF_SUMMARY,
+    DELIVERY_DELIVERED_EVENTS,
+    DELIVERY_TODAY_EVENTS,
+    DELIVERY_TRANSIT_EVENTS,
+    DOMAIN,
+)
 from .coordinator import (
-    RoyalMaiMailPiecesCoordinator,
     RoyalMailRemoveMailPieceCoordinator,
+    RoyalMaiMailPiecesCoordinator,
 )
 
 MAILPIECES_SENSORS = [
@@ -196,99 +195,70 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         self._state = None
         self.attrs: dict[str, Any] = {}
         self._available = True
+        self._state = None
+        self._attr_icon = self.entity_description.icon
 
-    @property
-    def available(self) -> bool:
-        """Return if the entity is available."""
+    def update_from_coordinator(self):
+        """Update sensor state and attributes from coordinator data."""
+
+        if (
+            isinstance(self.data, (dict, list))
+            and CONF_SUMMARY in self.data
+            and CONF_LAST_EVENT_CODE in self.data[CONF_SUMMARY]
+        ):
+            lastEventCode = self.data[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+            lastEventDateTime = self.data[CONF_SUMMARY][CONF_LAST_EVENT_DATE_TIME]
+            if lastEventCode in DELIVERY_DELIVERED_EVENTS:
+                if hasMailPieceExpired(self.hass, lastEventDateTime):
+                    session = async_get_clientsession(self.hass)
+
+                    removeMailPieceCoordinator = RoyalMailRemoveMailPieceCoordinator(
+                        self.hass, session, self.data, self._sensor_id
+                    )
+
+                    self.hass.async_add_job(removeMailPieceCoordinator.async_refresh())
+                    self.hass.async_add_job(removeMailPiece(self.hass, self._sensor_id))
+                    return
         if self.entity_description.key == CONF_MP_DETAILS:
-            return self._available and self.data is not None
-
-        return self.coordinator.last_update_success and self.data is not None
-
-    @property
-    def icon(self) -> str:
-        """Return a representative icon of the timer."""
-        if self.entity_description.key == CONF_MAILPIECE_ID:
-            if (
-                CONF_SUMMARY in self.data
-                and CONF_LAST_EVENT_CODE in self.data[CONF_SUMMARY]
-            ):
-                lastEventCode = self.data[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
-                if lastEventCode in DELIVERY_DELIVERED_EVENTS:
-                    return "mdi:package-variant-closed-check"
+            value = self.data
+        elif self.entity_description.key == CONF_DELIVERIES_TODAY:
+            deliveries_today = []
+            for key, value in self.coordinator.data.get(CONF_MP_DETAILS).items():
+                lastEventCode = value[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
                 if lastEventCode in DELIVERY_TODAY_EVENTS:
-                    return "mdi:truck-delivery-outline"
-                if lastEventCode in DELIVERY_TRANSIT_EVENTS:
-                    return "mdi:transit-connection-variant"
-        return self.entity_description.icon
+                    deliveries_today.append(key)
+            value = len(deliveries_today)
+        else:
+            value = self.data.get(self.entity_description.key)
 
-    async def async_update(self) -> None:
-        """Update the entity.
-
-        Only used by the generic entity update service.
-        """
-        try:
-            self._available = True
-
-            # Check if the data is available before processing it
-            if not self.data:
-                self._state = "Unable to Track"
-
-            if self.entity_description.key == CONF_MP_DETAILS:
-                value = self.data
-            elif self.entity_description.key == CONF_DELIVERIES_TODAY:
-                deliveries_today = []
-                for key, value in self.coordinator.data.get(CONF_MP_DETAILS).items():
-                    lastEventCode = value[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
-                    if lastEventCode in DELIVERY_TODAY_EVENTS:
-                        deliveries_today.append(key)
-                value = len(deliveries_today)
+            if self.entity_description.key == CONF_MAILPIECE_ID:
+                if (
+                    CONF_SUMMARY in self.data
+                    and "statusDescription" in self.data[CONF_SUMMARY]
+                ):
+                    value = self.data[CONF_SUMMARY]["statusDescription"]
             else:
-                value = self.data.get(self.entity_description.key)
+                if isinstance(value, dict):
+                    value = next(iter(value.values()))
 
-                if self.entity_description.key == CONF_MAILPIECE_ID:
-                    if (
-                        "summary" in self.data
-                        and "statusDescription" in self.data["summary"]
-                    ):
-                        value = self.data["summary"]["statusDescription"]
-                else:
-                    if isinstance(value, dict):
-                        value = next(iter(value.values()))
+                if isinstance(value, list):
+                    value = str(len(value))
 
-                    if isinstance(value, list):
-                        value = str(len(value))
+                if (
+                    value
+                    and self.entity_description.device_class
+                    == SensorDeviceClass.TIMESTAMP
+                ):
+                    user_timezone = dt_util.get_time_zone(self.hass.config.time_zone)
 
-                    if (
-                        value
-                        and self.entity_description.device_class
-                        == SensorDeviceClass.TIMESTAMP
-                    ):
-                        user_timezone = dt_util.get_time_zone(
-                            self.hass.config.time_zone
-                        )
+                    dt_utc = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").replace(
+                        tzinfo=user_timezone
+                    )
+                    # Convert the datetime to the default timezone
+                    value = dt_utc.astimezone(user_timezone)
 
-                        dt_utc = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").replace(
-                            tzinfo=user_timezone
-                        )
-                        # Convert the datetime to the default timezone
-                        value = dt_utc.astimezone(user_timezone)
+        self._state = value
 
-            self._state = value
-        except ClientError:
-            self._available = False
-            self._state = "Pending"
-
-    @property
-    def native_value(self) -> str | date | None:
-        """Native value."""
-        if self._state is None:
-            return "Unable to Track"  # or some other indicator
-        return self._state
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Define entity attributes."""
         attributes = {}
 
         if self.entity_description.key == CONF_MAILPIECE_ID:
@@ -309,4 +279,57 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
             if len(deliveries_today) > 0:
                 attributes[CONF_DELIVERIES_TODAY] = deliveries_today
 
-        return attributes
+        self.attrs = attributes
+
+        if self.entity_description.key == CONF_MAILPIECE_ID:
+            if (
+                CONF_SUMMARY in self.data
+                and CONF_LAST_EVENT_CODE in self.data[CONF_SUMMARY]
+            ):
+                lastEventCode = self.data[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+                if lastEventCode in DELIVERY_DELIVERED_EVENTS:
+                    self._attr_icon = "mdi:package-variant-closed-check"
+                if lastEventCode in DELIVERY_TODAY_EVENTS:
+                    self._attr_icon = "mdi:truck-delivery-outline"
+                if lastEventCode in DELIVERY_TRANSIT_EVENTS:
+                    self._attr_icon = "mdi:transit-connection-variant"
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.update_from_coordinator()
+        self.async_write_ha_state()
+
+    async def async_added_to_hass(self) -> None:
+        """Handle adding to Home Assistant."""
+        await super().async_added_to_hass()
+        await self.async_update()
+
+    async def async_remove(self) -> None:
+        """Handle the removal of the entity."""
+        # If you have any specific cleanup logic, add it here
+        if self.hass is not None:
+            await super().async_remove()
+
+    @property
+    def available(self) -> bool:
+        """Return if the entity is available."""
+        if self.entity_description.key == CONF_MP_DETAILS:
+            return self._available and self.data is not None
+
+        return self.coordinator.last_update_success and self.data is not None
+
+    @property
+    def icon(self) -> str:
+        """Return a representative icon of the timer."""
+        return self._attr_icon
+
+    @property
+    def native_value(self) -> str | date | None:
+        """Native value."""
+        return self._state
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Define entity attributes."""
+        return self.attrs

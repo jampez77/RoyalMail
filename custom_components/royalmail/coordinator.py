@@ -1,51 +1,46 @@
 """Royal Mail Coordinator."""
 
+from asyncio import Lock
 from datetime import timedelta
 import logging
-from homeassistant.const import CONTENT_TYPE_JSON
-from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import (
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
-from homeassistant.helpers.entity_registry import (
-    async_get,
-)
 import uuid
+
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
 from .const import (
-    DOMAIN,
-    TOKENS_URL,
-    CONF_USERNAME,
-    CONF_PASSWORD,
-    CONF_DEVICE_ID,
-    CONF_GRANT_TYPE,
-    CONF_IBM_CLIENT_ID,
-    IBM_CLIENT_ID,
-    CONF_REFRESH_TOKEN,
-    CONF_MAILPIECES,
-    CONF_ORIGIN,
-    ORIGIN,
-    CONF_ACCESS_TOKEN,
-    CONF_GUID,
-    CONF_FIRST_NAME,
-    MAILPIECES_URL,
-    MAILPIECE_URL,
-    SUBSCRIPTION_URL,
-    CONF_CONTENT_TYPE,
-    CONTENT_TYPE,
-    PUSH_NOTIFICATION_URL,
     ACCESS_TOKEN,
-    TRACKING_ALIAS_URL,
-    CONF_USER_ID,
+    CONF_ACCESS_TOKEN,
+    CONF_CONTENT_TYPE,
+    CONF_DEVICE_ID,
+    CONF_FIRST_NAME,
+    CONF_GRANT_TYPE,
+    CONF_GUID,
+    CONF_IBM_CLIENT_ID,
     CONF_MAILPIECE_ID,
-    PRODUCT_NAME,
-    REMOVE_MAILPIECE_URL,
+    CONF_MAILPIECES,
     CONF_MP_DETAILS,
-    CONF_SUMMARY,
+    CONF_ORIGIN,
+    CONF_PASSWORD,
     CONF_PRODUCT_NAME,
+    CONF_REFRESH_TOKEN,
+    CONF_SUMMARY,
+    CONF_USER_ID,
+    CONF_USERNAME,
+    CONTENT_TYPE,
+    DOMAIN,
+    IBM_CLIENT_ID,
+    MAILPIECE_URL,
+    MAILPIECES_URL,
+    ORIGIN,
+    PRODUCT_NAME,
+    PUSH_NOTIFICATION_URL,
+    REMOVE_MAILPIECE_URL,
+    SUBSCRIPTION_URL,
+    TOKENS_URL,
+    TRACKING_ALIAS_URL,
 )
-from asyncio import Lock
 
 _LOGGER = logging.getLogger(__name__)
 

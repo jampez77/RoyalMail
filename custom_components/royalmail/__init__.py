@@ -1,15 +1,17 @@
 """The Royal Mail integration."""
 
 from __future__ import annotations
+
 import asyncio
-from homeassistant.helpers.typing import ConfigType
-from homeassistant.config_entries import ConfigEntry
+
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from .const import DOMAIN
-from homeassistant.config_entries import ConfigEntryState
-from .services import async_setup_services, async_cleanup_services
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.typing import ConfigType
+
+from .const import DOMAIN
+from .services import async_cleanup_services, async_setup_services
 
 PLATFORMS = [Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
