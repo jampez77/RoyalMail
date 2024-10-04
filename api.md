@@ -7,6 +7,7 @@ Below is an anonymized version of the API documentation. Sensitive information l
 This is by no means an extensive list of event codes that a parcel can encounter but i'll put what i find here as they can provide useful information especially when used with the corresponding location name.
 
 - EVKSP: Delivered and Signed
+- EVKSF: Delivered to Safeplace by
 - EVGPD: Due to be delivered today
 - EVNSR: Item Prepared for Redelivery
 - EVNDA: Available for Redelivery or Collection

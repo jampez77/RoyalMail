@@ -81,7 +81,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                return self.async_create_entry(title=info["title"], data=user_input)
+                data = dict(user_input)
+
+                existing_entries = self.hass.config_entries.async_entries(DOMAIN)
+
+                # Check if an entry already exists with the same username
+                existing_entry = next(
+                    (
+                        entry
+                        for entry in existing_entries
+                        if entry.data.get(CONF_USERNAME) == user_input[CONF_USERNAME]
+                    ),
+                    None,
+                )
+
+                if existing_entry is not None:
+                    # Update specific data in the entry
+                    updated_data = existing_entry.data.copy()
+                    # Merge the import_data into the entry_data
+                    updated_data.update(data)
+                    # Update the entry with the new data
+                    self.hass.config_entries.async_update_entry(
+                        existing_entry, data=updated_data
+                    )
+
+                return self.async_create_entry(title=info["title"], data=data)
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
