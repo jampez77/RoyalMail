@@ -97,10 +97,12 @@ async def get_sensors(
 
             if lastEventCode in DELIVERY_TODAY_EVENTS:
                 parcels_out_for_delivery.append(value)
+            add_entity = True
 
             if lastEventCode in DELIVERY_DELIVERED_EVENTS:
                 lastEventDateTime = value[CONF_SUMMARY][CONF_LAST_EVENT_DATE_TIME]
                 if hasMailPieceExpired(hass, lastEventDateTime):
+                    add_entity = False
                     removeMailPieceCoordinator = RoyalMailRemoveMailPieceCoordinator(
                         hass, session, data, key
                     )
@@ -115,19 +117,19 @@ async def get_sensors(
                         await removeMailPiece(hass, key)
                         totalMailPieces -= 1
 
-                else:
-                    mailPieceSensors.append(
-                        RoyalMailSensor(
-                            coordinator=rmCoordinator,
-                            name=name,
-                            value=None,
-                            description=SensorEntityDescription(
-                                key=CONF_MAILPIECE_ID,
-                                name=key,
-                                icon="mdi:package-variant-closed-remove",
-                            ),
-                        )
+            if add_entity:
+                mailPieceSensors.append(
+                    RoyalMailSensor(
+                        coordinator=rmCoordinator,
+                        name=name,
+                        value=None,
+                        description=SensorEntityDescription(
+                            key=CONF_MAILPIECE_ID,
+                            name=key,
+                            icon="mdi:package-variant-closed-remove",
+                        ),
                     )
+                )
 
     total_sensor = [TotalParcelsSensor(hass, name, parcels, parcels_out_for_delivery)]
 

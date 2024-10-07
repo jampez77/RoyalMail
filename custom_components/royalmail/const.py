@@ -51,13 +51,16 @@ DELIVERY_TRANSIT_EVENTS = [
     "EVORI",
     "EVOAC",
     "EVAIE",
+    "EVAIP",
     "EVPPA",
     "EVDAV",
     "EVIMC",
     "EVDAC",
     "EVNRT",
     "EVOCO",
+    "RSRXS",
 ]
+DELIVERY_FAILED = ["EVKNR"]
 DELIVERY_DELIVERED_EVENTS = ["EVKSP", "EVKOP", "EVKSF"]
 DELIVERY_TODAY_EVENTS = ["EVGPD"]
 CONF_PARCELS = "parcels"
