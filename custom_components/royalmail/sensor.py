@@ -21,10 +21,12 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_LAST_EVENT_CODE,
     CONF_LAST_EVENT_DATE_TIME,
+    CONF_LAST_EVENT_NAME,
     CONF_MAILPIECE_ID,
     CONF_MP_DETAILS,
     CONF_OUT_FOR_DELIVERY,
     CONF_PARCELS,
+    CONF_STATUS_DESCRIPTION,
     CONF_SUMMARY,
     DELIVERY_DELIVERED_EVENTS,
     DELIVERY_TODAY_EVENTS,
@@ -156,7 +158,7 @@ async def async_setup_entry(
         await remove_unavailable_entities(hass)
 
 
-async def remove_unavailable_entities(hass):
+async def remove_unavailable_entities(hass: HomeAssistant):
     """Remove entities no longer provided by the integration."""
     # Access the entity registry
     registry = er.async_get(hass)
@@ -183,7 +185,7 @@ class TotalParcelsSensor(SensorEntity):
         name: str,
         parcels: list,
         parcels_out_for_delivery: list,
-    ):
+    ) -> None:
         """Init."""
         self.total_parcels = parcels
         self.parcels_out_for_delivery = parcels_out_for_delivery
@@ -203,12 +205,12 @@ class TotalParcelsSensor(SensorEntity):
         self.attrs: dict[str, Any] = {}
 
     @property
-    def name(self):
+    def name(self) -> None:
         """Name."""
         return self._name
 
     @property
-    def state(self):
+    def state(self) -> None:
         """State."""
         return self._state
 
@@ -339,8 +341,16 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
 
         value = self.data.get(self.entity_description.key)
 
-        if CONF_SUMMARY in self.data and "statusDescription" in self.data[CONF_SUMMARY]:
-            value = self.data[CONF_SUMMARY]["statusDescription"]
+        if (
+            CONF_SUMMARY in self.data
+            and CONF_LAST_EVENT_NAME in self.data[CONF_SUMMARY]
+            and CONF_LAST_EVENT_CODE in self.data[CONF_SUMMARY]
+        ):
+            lastEventCode = self.data[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+            if lastEventCode in DELIVERY_DELIVERED_EVENTS:
+                value = self.data[CONF_SUMMARY][CONF_STATUS_DESCRIPTION]
+            else:
+                value = self.data[CONF_SUMMARY][CONF_LAST_EVENT_NAME]
 
         return value
 

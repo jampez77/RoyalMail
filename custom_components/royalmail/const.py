@@ -42,8 +42,10 @@ CONF_USER_ID = "userId"
 CONF_PRODUCT_NAME = "productName"
 PRODUCT_NAME = "ProductName"
 CONF_SUMMARY = "summary"
+CONF_STATUS_DESCRIPTION = "statusDescription"
 CONF_DELIVERIES_TODAY = "deliveriesToday"
 CONF_LAST_EVENT_CODE = "lastEventCode"
+CONF_LAST_EVENT_NAME = "lastEventName"
 CONF_LAST_EVENT_DATE_TIME = "lastEventDateTime"
 DELIVERY_TRANSIT_EVENTS = [
     "EVNSR",
@@ -59,6 +61,7 @@ DELIVERY_TRANSIT_EVENTS = [
     "EVNRT",
     "EVOCO",
     "RSRXS",
+    "EVNDA",
 ]
 DELIVERY_FAILED = ["EVKNR"]
 DELIVERY_DELIVERED_EVENTS = ["EVKSP", "EVKOP", "EVKSF"]
