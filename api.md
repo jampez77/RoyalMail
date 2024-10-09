@@ -18,12 +18,14 @@ This is by no means an extensive list of event codes that a parcel can encounter
 - EVOAC: Item received at
 - EVAIE/EVAIP: Sender preparing/despatching item
 - EVPPA: Accepted at Parcelshop
-- EVDAV/EVIMC/EVDAC: Item Received
+- EVDAV/EVIMC/EVDAC/EVBAV: Item Received
 - EVKOP: Delivered by
 - EVNRT: Item Retention
 - EVOCO: We've received your item and its now being processed for delivery.
 - EVKNR: Delivery Attempted
-- RSRXS: Delivery request received
+- RSRXS/RORXS: Delivery request received
+- EVKLS: Delivered to Your Collection Point by
+- EVPLA: Available for collection
 
 
 # Royal Mail Tracking API

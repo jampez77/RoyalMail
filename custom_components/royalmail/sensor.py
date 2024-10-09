@@ -19,9 +19,10 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_LAST_EVENT_CODE,
-    CONF_LAST_EVENT_DATE_TIME,
-    CONF_LAST_EVENT_NAME,
+    CONF_EVENTCODE,
+    CONF_EVENTDATETIME,
+    CONF_EVENTNAME,
+    CONF_EVENTS,
     CONF_MAILPIECE_ID,
     CONF_MP_DETAILS,
     CONF_OUT_FOR_DELIVERY,
@@ -29,6 +30,7 @@ from .const import (
     CONF_STATUS_DESCRIPTION,
     CONF_SUMMARY,
     DELIVERY_DELIVERED_EVENTS,
+    DELIVERY_PENDING,
     DELIVERY_TODAY_EVENTS,
     DELIVERY_TRANSIT_EVENTS,
     DOMAIN,
@@ -94,15 +96,15 @@ async def get_sensors(
     totalMailPieces = len(parcels)
 
     for key, value in parcels.items():
-        if CONF_SUMMARY in value and CONF_LAST_EVENT_CODE in value[CONF_SUMMARY]:
-            lastEventCode = value[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+        if value is not None and CONF_EVENTS in value:
+            lastEventCode = value[CONF_EVENTS][0][CONF_EVENTCODE]
 
             if lastEventCode in DELIVERY_TODAY_EVENTS:
                 parcels_out_for_delivery.append(value)
             add_entity = True
 
             if lastEventCode in DELIVERY_DELIVERED_EVENTS:
-                lastEventDateTime = value[CONF_SUMMARY][CONF_LAST_EVENT_DATE_TIME]
+                lastEventDateTime = value[CONF_EVENTS][0][CONF_EVENTDATETIME]
                 if hasMailPieceExpired(hass, lastEventDateTime):
                     add_entity = False
                     removeMailPieceCoordinator = RoyalMailRemoveMailPieceCoordinator(
@@ -234,7 +236,7 @@ class TotalParcelsSensor(SensorEntity):
 
     def is_parcel_delivery_today(self, parcel: dict) -> bool:
         """Check if the parcel has been delivered."""
-        lastEventCode = parcel[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+        lastEventCode = parcel[CONF_EVENTS][0][CONF_EVENTCODE]
         return lastEventCode in DELIVERY_TODAY_EVENTS
 
     @property
@@ -251,9 +253,10 @@ class TotalParcelsSensor(SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Define entity attributes."""
 
-        self.attrs[CONF_PARCELS] = [
-            parcel[CONF_MAILPIECE_ID] for key, parcel in self.total_parcels.items()
-        ]
+        if self.total_parcels is not None:
+            self.attrs[CONF_PARCELS] = [
+                parcel[CONF_MAILPIECE_ID] for key, parcel in self.total_parcels.items()
+            ]
 
         self.attrs[CONF_OUT_FOR_DELIVERY] = [
             parcel[CONF_MAILPIECE_ID] for parcel in self.parcels_out_for_delivery
@@ -298,13 +301,9 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
     def update_from_coordinator(self):
         """Update sensor state and attributes from coordinator data."""
 
-        if (
-            isinstance(self.data, (dict, list))
-            and CONF_SUMMARY in self.data
-            and CONF_LAST_EVENT_CODE in self.data[CONF_SUMMARY]
-        ):
-            lastEventCode = self.data[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
-            lastEventDateTime = self.data[CONF_SUMMARY][CONF_LAST_EVENT_DATE_TIME]
+        if isinstance(self.data, (dict, list)) and CONF_EVENTS in self.data:
+            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
+            lastEventDateTime = self.data[CONF_EVENTS][0][CONF_EVENTDATETIME]
             if lastEventCode in DELIVERY_DELIVERED_EVENTS:
                 if hasMailPieceExpired(self.hass, lastEventDateTime):
                     session = async_get_clientsession(self.hass)
@@ -341,32 +340,27 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
 
         value = self.data.get(self.entity_description.key)
 
-        if (
-            CONF_SUMMARY in self.data
-            and CONF_LAST_EVENT_NAME in self.data[CONF_SUMMARY]
-            and CONF_LAST_EVENT_CODE in self.data[CONF_SUMMARY]
-        ):
-            lastEventCode = self.data[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+        if CONF_SUMMARY in self.data and CONF_EVENTS in self.data:
+            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
             if lastEventCode in DELIVERY_DELIVERED_EVENTS:
                 value = self.data[CONF_SUMMARY][CONF_STATUS_DESCRIPTION]
             else:
-                value = self.data[CONF_SUMMARY][CONF_LAST_EVENT_NAME]
+                value = self.data[CONF_EVENTS][0][CONF_EVENTNAME]
 
         return value
 
     def get_icon(self) -> str:
         """Generate Icon."""
-        if (
-            CONF_SUMMARY in self.data
-            and CONF_LAST_EVENT_CODE in self.data[CONF_SUMMARY]
-        ):
-            lastEventCode = self.data[CONF_SUMMARY][CONF_LAST_EVENT_CODE]
+        if CONF_EVENTS in self.data:
+            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
             if lastEventCode in DELIVERY_DELIVERED_EVENTS:
                 return "mdi:package-variant-closed-check"
             if lastEventCode in DELIVERY_TODAY_EVENTS:
                 return "mdi:truck-delivery-outline"
             if lastEventCode in DELIVERY_TRANSIT_EVENTS:
                 return "mdi:transit-connection-variant"
+            if lastEventCode in DELIVERY_PENDING:
+                return "mdi:human-dolly"
         return self.entity_description.icon
 
     @callback

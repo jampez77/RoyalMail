@@ -44,9 +44,10 @@ PRODUCT_NAME = "ProductName"
 CONF_SUMMARY = "summary"
 CONF_STATUS_DESCRIPTION = "statusDescription"
 CONF_DELIVERIES_TODAY = "deliveriesToday"
-CONF_LAST_EVENT_CODE = "lastEventCode"
-CONF_LAST_EVENT_NAME = "lastEventName"
-CONF_LAST_EVENT_DATE_TIME = "lastEventDateTime"
+CONF_EVENTS = "events"
+CONF_EVENTCODE = "eventCode"
+CONF_EVENTNAME = "eventName"
+CONF_EVENTDATETIME = "eventDateTime"
 DELIVERY_TRANSIT_EVENTS = [
     "EVNSR",
     "EVODO",
@@ -61,10 +62,14 @@ DELIVERY_TRANSIT_EVENTS = [
     "EVNRT",
     "EVOCO",
     "RSRXS",
+    "RORXS",
     "EVNDA",
+    "EVBAV",
+    "EVKLS",
 ]
 DELIVERY_FAILED = ["EVKNR"]
 DELIVERY_DELIVERED_EVENTS = ["EVKSP", "EVKOP", "EVKSF"]
+DELIVERY_PENDING = ["EVPLA"]
 DELIVERY_TODAY_EVENTS = ["EVGPD"]
 CONF_PARCELS = "parcels"
 CONF_OUT_FOR_DELIVERY = "out_for_delivery"
