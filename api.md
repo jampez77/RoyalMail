@@ -26,6 +26,7 @@ This is by no means an extensive list of event codes that a parcel can encounter
 - RSRXS/RORXS: Delivery request received
 - EVKLS: Delivered to Your Collection Point by
 - EVPLA: Available for collection
+- EVPLC: Collected
 
 
 # Royal Mail Tracking API

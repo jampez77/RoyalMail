@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_AVAILABLE_FOR_COLLECTION,
     CONF_EVENTCODE,
     CONF_EVENTDATETIME,
     CONF_EVENTNAME,
@@ -29,11 +30,13 @@ from .const import (
     CONF_PARCELS,
     CONF_STATUS_DESCRIPTION,
     CONF_SUMMARY,
-    DELIVERY_DELIVERED_EVENTS,
-    DELIVERY_PENDING,
-    DELIVERY_TODAY_EVENTS,
-    DELIVERY_TRANSIT_EVENTS,
     DOMAIN,
+    PARCEL_AVAILABLE_FOR_COLLECTION,
+    PARCEL_COLLECTED,
+    PARCEL_COLLECTION,
+    PARCEL_DELIVERED,
+    PARCEL_DELIVERY_TODAY,
+    PARCEL_IN_TRANSIT,
 )
 from .coordinator import (
     RoyalMailRemoveMailPieceCoordinator,
@@ -90,6 +93,7 @@ async def get_sensors(
 
     mailPieceSensors = []
     parcels_out_for_delivery = []
+    parcels_available_for_collection = []
 
     parcels = rmData[CONF_MP_DETAILS]
 
@@ -99,14 +103,15 @@ async def get_sensors(
         if value is not None and CONF_EVENTS in value:
             lastEventCode = value[CONF_EVENTS][0][CONF_EVENTCODE]
 
-            if lastEventCode in DELIVERY_TODAY_EVENTS:
+            if lastEventCode in PARCEL_DELIVERY_TODAY:
                 parcels_out_for_delivery.append(value)
-            add_entity = True
 
-            if lastEventCode in DELIVERY_DELIVERED_EVENTS:
+            if lastEventCode in PARCEL_AVAILABLE_FOR_COLLECTION:
+                parcels_available_for_collection.append(value)
+
+            if lastEventCode in PARCEL_DELIVERED or lastEventCode == PARCEL_COLLECTED:
                 lastEventDateTime = value[CONF_EVENTS][0][CONF_EVENTDATETIME]
                 if hasMailPieceExpired(hass, lastEventDateTime):
-                    add_entity = False
                     removeMailPieceCoordinator = RoyalMailRemoveMailPieceCoordinator(
                         hass, session, data, key
                     )
@@ -121,21 +126,27 @@ async def get_sensors(
                         await removeMailPiece(hass, key)
                         totalMailPieces -= 1
 
-            if add_entity:
-                mailPieceSensors.append(
-                    RoyalMailSensor(
-                        coordinator=rmCoordinator,
-                        name=name,
-                        value=None,
-                        description=SensorEntityDescription(
-                            key=CONF_MAILPIECE_ID,
-                            name=key,
-                            icon="mdi:package-variant-closed-remove",
-                        ),
-                    )
+            mailPieceSensors.append(
+                RoyalMailSensor(
+                    hass=hass,
+                    name=name,
+                    data=rmCoordinator.data.get(CONF_MP_DETAILS)[key],
+                    description=SensorEntityDescription(
+                        key=CONF_MAILPIECE_ID,
+                        name=key,
+                        icon="mdi:package-variant-closed-remove",
+                    ),
                 )
+            )
 
-    total_sensor = [TotalParcelsSensor(hass, name, parcels, parcels_out_for_delivery)]
+    total_sensor = [
+        TotalParcelsSensor(
+            rmCoordinator,
+            name,
+            parcels_out_for_delivery,
+            parcels_available_for_collection,
+        )
+    ]
 
     return total_sensor + mailPieceSensors
 
@@ -157,8 +168,6 @@ async def async_setup_entry(
 
         async_add_entities(sensors, update_before_add=True)
 
-        await remove_unavailable_entities(hass)
-
 
 async def remove_unavailable_entities(hass: HomeAssistant):
     """Remove entities no longer provided by the integration."""
@@ -178,22 +187,24 @@ async def remove_unavailable_entities(hass: HomeAssistant):
                 registry.async_remove(entity_id)
 
 
-class TotalParcelsSensor(SensorEntity):
+class TotalParcelsSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
     """Sensor to track the total number of parcels."""
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        coordinator: DataUpdateCoordinator,
         name: str,
-        parcels: list,
         parcels_out_for_delivery: list,
+        parcels_available_for_collection: list,
     ) -> None:
         """Init."""
-        self.total_parcels = parcels
+        super().__init__(coordinator)
+        self.coordinator = coordinator
+        self.total_parcels = self.coordinator.data[CONF_MP_DETAILS]
         self.parcels_out_for_delivery = parcels_out_for_delivery
-        self._state = len(self.total_parcels)
+        self.parcels_available_for_collection = parcels_available_for_collection
+        self._state = self.get_state()
         self._name = "Tracked Parcels"
-        self.hass = hass
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{name}")},
             manufacturer="Royal Mail",
@@ -216,42 +227,27 @@ class TotalParcelsSensor(SensorEntity):
         """State."""
         return self._state
 
-    def update_state(self):
+    def get_state(self) -> int:
         """Update the state based on the number of tracked parcels."""
-        self._state = len(self.total_parcels)
+        return len(self.total_parcels)
 
-    def update_parcels(self):
-        """Update parcels and re-calculate state."""
+    def update_from_coordinator(self):
+        """Update sensor state and attributes from coordinator data."""
+
         parcels_out_for_delivery = [
             parcel
-            for parcel in self.total_parcels
+            for key, parcel in self.total_parcels.items()
             if self.is_parcel_delivery_today(parcel)
         ]
 
+        parcels_available_for_collection = [
+            parcel
+            for key, parcel in self.total_parcels.items()
+            if self.is_parcel_available_for_collection(parcel)
+        ]
+
         self.parcels_out_for_delivery = parcels_out_for_delivery
-
-        self.update_state()
-
-        self.async_write_ha_state()
-
-    def is_parcel_delivery_today(self, parcel: dict) -> bool:
-        """Check if the parcel has been delivered."""
-        lastEventCode = parcel[CONF_EVENTS][0][CONF_EVENTCODE]
-        return lastEventCode in DELIVERY_TODAY_EVENTS
-
-    @property
-    def icon(self) -> str:
-        """Return a representative icon of the timer."""
-        return self._attr_icon
-
-    @property
-    def native_value(self) -> str | date | None:
-        """Native value."""
-        return self._state
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Define entity attributes."""
+        self.parcels_available_for_collection = parcels_available_for_collection
 
         if self.total_parcels is not None:
             self.attrs[CONF_PARCELS] = [
@@ -261,107 +257,17 @@ class TotalParcelsSensor(SensorEntity):
         self.attrs[CONF_OUT_FOR_DELIVERY] = [
             parcel[CONF_MAILPIECE_ID] for parcel in self.parcels_out_for_delivery
         ]
-        return self.attrs
 
-
-class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
-    """Define an Royal Mail sensor."""
-
-    def __init__(
-        self,
-        coordinator: DataUpdateCoordinator,
-        value: int,
-        name: str,
-        description: SensorEntityDescription,
-    ) -> None:
-        """Initialize."""
-        super().__init__(coordinator)
-        self.coordinator = coordinator
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{name}")},
-            manufacturer="Royal Mail",
-            model="Item Tracker",
-            name=name,
-            configuration_url="https://github.com/jampez77/RoyalMail/",
-        )
-
-        self.data = coordinator.data.get(CONF_MP_DETAILS)[description.name]
-        sensor_id = f"{DOMAIN}_{description.name}".lower()
-        # Set the unique ID based on domain, name, and sensor type
-        self._attr_unique_id = f"{DOMAIN}-{name}-{sensor_id}".lower()
-        self.entity_id = f"sensor.{sensor_id}".lower()
-        self.entity_description = description
-        self._name = name
-        self._sensor_id = sensor_id
-        self.attrs = self.get_attributes()
-        self._available = True
-        self._state = self.get_state()
-        self._attr_icon = self.get_icon()
-
-    def update_from_coordinator(self):
-        """Update sensor state and attributes from coordinator data."""
-
-        if isinstance(self.data, (dict, list)) and CONF_EVENTS in self.data:
-            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
-            lastEventDateTime = self.data[CONF_EVENTS][0][CONF_EVENTDATETIME]
-            if lastEventCode in DELIVERY_DELIVERED_EVENTS:
-                if hasMailPieceExpired(self.hass, lastEventDateTime):
-                    session = async_get_clientsession(self.hass)
-
-                    removeMailPieceCoordinator = RoyalMailRemoveMailPieceCoordinator(
-                        self.hass, session, self.data, self._sensor_id
-                    )
-
-                    self.hass.async_add_job(removeMailPieceCoordinator.async_refresh())
-                    self.hass.async_add_job(removeMailPiece(self.hass, self._sensor_id))
-                    return
+        self.attrs[CONF_AVAILABLE_FOR_COLLECTION] = [
+            parcel[CONF_MAILPIECE_ID]
+            for parcel in self.parcels_available_for_collection
+        ]
 
         self._state = self.get_state()
-        self.attrs = self.get_attributes()
-        self._attr_icon = self.get_icon()
 
-        self.notify_total_parcels()
+        self.async_write_ha_state()
 
-    def get_attributes(self) -> dict[str, Any]:
-        """Generate Attributes."""
-        attributes = {}
-
-        mail_piece_data = self.data
-        if mail_piece_data:
-            for key, value in mail_piece_data.items():
-                if isinstance(value, dict):
-                    attributes.update({f"{key}_{k}": v for k, v in value.items()})
-                else:
-                    attributes[key] = value
-        return attributes
-
-    def get_state(self) -> str:
-        """Generate State."""
-
-        value = self.data.get(self.entity_description.key)
-
-        if CONF_SUMMARY in self.data and CONF_EVENTS in self.data:
-            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
-            if lastEventCode in DELIVERY_DELIVERED_EVENTS:
-                value = self.data[CONF_SUMMARY][CONF_STATUS_DESCRIPTION]
-            else:
-                value = self.data[CONF_EVENTS][0][CONF_EVENTNAME]
-
-        return value
-
-    def get_icon(self) -> str:
-        """Generate Icon."""
-        if CONF_EVENTS in self.data:
-            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
-            if lastEventCode in DELIVERY_DELIVERED_EVENTS:
-                return "mdi:package-variant-closed-check"
-            if lastEventCode in DELIVERY_TODAY_EVENTS:
-                return "mdi:truck-delivery-outline"
-            if lastEventCode in DELIVERY_TRANSIT_EVENTS:
-                return "mdi:transit-connection-variant"
-            if lastEventCode in DELIVERY_PENDING:
-                return "mdi:human-dolly"
-        return self.entity_description.icon
+        self.hass.add_job(remove_unavailable_entities(self.hass))
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -380,21 +286,15 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         if self.hass is not None:
             await super().async_remove()
 
-    def notify_total_parcels(self):
-        """Notify the total parcels sensor to update its state."""
-        total_sensor = None
-        for entity in self.hass.data[DOMAIN].values():
-            if isinstance(entity, TotalParcelsSensor):
-                total_sensor = entity
-                break
+    def is_parcel_delivery_today(self, parcel: dict) -> bool:
+        """Check if the parcel has been delivered."""
+        lastEventCode = parcel[CONF_EVENTS][0][CONF_EVENTCODE]
+        return lastEventCode in PARCEL_DELIVERY_TODAY
 
-        if total_sensor:
-            total_sensor.update_parcels()
-
-    @property
-    def available(self) -> bool:
-        """Return if the entity is available."""
-        return self.coordinator.last_update_success and self.data is not None
+    def is_parcel_available_for_collection(self, parcel: dict) -> bool:
+        """Check if parcel is available for collection."""
+        lastEventCode = parcel[CONF_EVENTS][0][CONF_EVENTCODE]
+        return lastEventCode in PARCEL_AVAILABLE_FOR_COLLECTION
 
     @property
     def icon(self) -> str:
@@ -410,3 +310,92 @@ class RoyalMailSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Define entity attributes."""
         return self.attrs
+
+
+class RoyalMailSensor(SensorEntity):
+    """Define an Royal Mail sensor."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        data: dict,
+        name: str,
+        description: SensorEntityDescription,
+    ) -> None:
+        """Initialize."""
+        self.hass = hass
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{name}")},
+            manufacturer="Royal Mail",
+            model="Item Tracker",
+            name=name,
+            configuration_url="https://github.com/jampez77/RoyalMail/",
+        )
+
+        self.data = data
+        sensor_id = f"{DOMAIN}_parcel_{description.name}".lower()
+        # Set the unique ID based on domain, name, and sensor type
+        self._attr_unique_id = f"{DOMAIN}-{name}-{description.name}".lower()
+        self.entity_id = f"sensor.{DOMAIN}_parcel_{description.name}".lower()
+        self.entity_description = description
+        self._name = name
+        self._sensor_id = sensor_id
+        self.attrs: dict[str, Any] = {}
+        self._available = True
+        self._state = None
+        self._attr_icon = self.entity_description.icon
+
+    async def async_remove(self) -> None:
+        """Handle the removal of the entity."""
+        # If you have any specific cleanup logic, add it here
+        if self.hass is not None:
+            await super().async_remove()
+
+    @property
+    def available(self) -> bool:
+        """Return if the entity is available."""
+        return self.data is not None
+
+    @property
+    def icon(self) -> str:
+        """Return a representative icon of the timer."""
+        if CONF_EVENTS in self.data:
+            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
+            if lastEventCode in PARCEL_DELIVERED:
+                return "mdi:package-variant-closed-check"
+            if lastEventCode in PARCEL_DELIVERY_TODAY:
+                return "mdi:truck-delivery-outline"
+            if lastEventCode in PARCEL_IN_TRANSIT:
+                return "mdi:transit-connection-variant"
+            if lastEventCode in PARCEL_COLLECTION:
+                return "mdi:human-dolly"
+
+        return self._attr_icon
+
+    @property
+    def native_value(self) -> str | date | None:
+        """Native value."""
+        value = self.data.get(self.entity_description.key)
+
+        if CONF_SUMMARY in self.data and CONF_EVENTS in self.data:
+            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
+            if lastEventCode in PARCEL_DELIVERED:
+                value = self.data[CONF_SUMMARY][CONF_STATUS_DESCRIPTION]
+            else:
+                value = self.data[CONF_EVENTS][0][CONF_EVENTNAME]
+
+        return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Define entity attributes."""
+        attributes = {}
+
+        mail_piece_data = self.data
+        if mail_piece_data:
+            for key, value in mail_piece_data.items():
+                if isinstance(value, dict):
+                    attributes.update({f"{key}_{k}": v for k, v in value.items()})
+                else:
+                    attributes[key] = value
+        return attributes
