@@ -92,8 +92,6 @@ async def get_sensors(
     rmData = rmCoordinator.data
 
     mailPieceSensors = []
-    parcels_out_for_delivery = []
-    parcels_available_for_collection = []
 
     parcels = rmData[CONF_MP_DETAILS]
 
@@ -102,12 +100,6 @@ async def get_sensors(
     for key, value in parcels.items():
         if value is not None and CONF_EVENTS in value:
             lastEventCode = value[CONF_EVENTS][0][CONF_EVENTCODE]
-
-            if lastEventCode in PARCEL_DELIVERY_TODAY:
-                parcels_out_for_delivery.append(value)
-
-            if lastEventCode in PARCEL_AVAILABLE_FOR_COLLECTION:
-                parcels_available_for_collection.append(value)
 
             if lastEventCode in PARCEL_DELIVERED or lastEventCode == PARCEL_COLLECTED:
                 lastEventDateTime = value[CONF_EVENTS][0][CONF_EVENTDATETIME]
@@ -143,8 +135,6 @@ async def get_sensors(
         TotalParcelsSensor(
             rmCoordinator,
             name,
-            parcels_out_for_delivery,
-            parcels_available_for_collection,
         )
     ]
 
@@ -194,17 +184,13 @@ class TotalParcelsSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity)
         self,
         coordinator: DataUpdateCoordinator,
         name: str,
-        parcels_out_for_delivery: list,
-        parcels_available_for_collection: list,
     ) -> None:
         """Init."""
         super().__init__(coordinator)
         self.coordinator = coordinator
         self.total_parcels = self.coordinator.data[CONF_MP_DETAILS]
-        self.parcels_out_for_delivery = parcels_out_for_delivery
-        self.parcels_available_for_collection = parcels_available_for_collection
         self._state = self.get_state()
-        self._name = "Tracked Parcels"
+        self._name = "Royal Mail Parcels"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{name}")},
             manufacturer="Royal Mail",
@@ -234,33 +220,33 @@ class TotalParcelsSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity)
     def update_from_coordinator(self):
         """Update sensor state and attributes from coordinator data."""
 
-        parcels_out_for_delivery = [
-            parcel
-            for key, parcel in self.total_parcels.items()
-            if self.is_parcel_delivery_today(parcel)
-        ]
+        parcels_out_for_delivery = []
+        parcels_available_for_collection = []
+        for parcel in self.total_parcels.values():
+            if self.is_parcel_delivery_today(parcel):
+                parcels_out_for_delivery.append(parcel)
 
-        parcels_available_for_collection = [
-            parcel
-            for key, parcel in self.total_parcels.items()
-            if self.is_parcel_available_for_collection(parcel)
-        ]
+            if self.is_parcel_available_for_collection(parcel):
+                parcels_available_for_collection.append(parcel)
 
-        self.parcels_out_for_delivery = parcels_out_for_delivery
-        self.parcels_available_for_collection = parcels_available_for_collection
+            for entity in self.hass.data[DOMAIN].values():
+                if (
+                    isinstance(entity, RoyalMailSensor)
+                    and str(parcel[CONF_MAILPIECE_ID]).lower() in entity.unique_id
+                ):
+                    entity.update_parcel_data(parcel)
 
         if self.total_parcels is not None:
             self.attrs[CONF_PARCELS] = [
-                parcel[CONF_MAILPIECE_ID] for key, parcel in self.total_parcels.items()
+                parcel[CONF_MAILPIECE_ID] for parcel in self.total_parcels.values()
             ]
 
         self.attrs[CONF_OUT_FOR_DELIVERY] = [
-            parcel[CONF_MAILPIECE_ID] for parcel in self.parcels_out_for_delivery
+            parcel[CONF_MAILPIECE_ID] for parcel in parcels_out_for_delivery
         ]
 
         self.attrs[CONF_AVAILABLE_FOR_COLLECTION] = [
-            parcel[CONF_MAILPIECE_ID]
-            for parcel in self.parcels_available_for_collection
+            parcel[CONF_MAILPIECE_ID] for parcel in parcels_available_for_collection
         ]
 
         self._state = self.get_state()
@@ -340,10 +326,10 @@ class RoyalMailSensor(SensorEntity):
         self.entity_description = description
         self._name = name
         self._sensor_id = sensor_id
-        self.attrs: dict[str, Any] = {}
-        self._available = True
-        self._state = None
-        self._attr_icon = self.entity_description.icon
+        self.attrs = self.update_attributes()
+        self._available = self.update_available()
+        self._state = self.update_state()
+        self._attr_icon = self.update_icon()
 
     async def async_remove(self) -> None:
         """Handle the removal of the entity."""
@@ -351,30 +337,8 @@ class RoyalMailSensor(SensorEntity):
         if self.hass is not None:
             await super().async_remove()
 
-    @property
-    def available(self) -> bool:
-        """Return if the entity is available."""
-        return self.data is not None
-
-    @property
-    def icon(self) -> str:
-        """Return a representative icon of the timer."""
-        if CONF_EVENTS in self.data:
-            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
-            if lastEventCode in PARCEL_DELIVERED:
-                return "mdi:package-variant-closed-check"
-            if lastEventCode in PARCEL_DELIVERY_TODAY:
-                return "mdi:truck-delivery-outline"
-            if lastEventCode in PARCEL_IN_TRANSIT:
-                return "mdi:transit-connection-variant"
-            if lastEventCode in PARCEL_COLLECTION:
-                return "mdi:human-dolly"
-
-        return self._attr_icon
-
-    @property
-    def native_value(self) -> str | date | None:
-        """Native value."""
+    def update_state(self) -> str:
+        """Update Name."""
         value = self.data.get(self.entity_description.key)
 
         if CONF_SUMMARY in self.data and CONF_EVENTS in self.data:
@@ -386,9 +350,28 @@ class RoyalMailSensor(SensorEntity):
 
         return value
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Define entity attributes."""
+    def update_available(self) -> bool:
+        """Update Available."""
+        return self.data is not None
+
+    def update_icon(self) -> str:
+        """Update Icon."""
+
+        if CONF_EVENTS in self.data:
+            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
+            if lastEventCode in PARCEL_DELIVERED:
+                return "mdi:package-variant-closed-check"
+            if lastEventCode in PARCEL_DELIVERY_TODAY:
+                return "mdi:truck-delivery-outline"
+            if lastEventCode in PARCEL_IN_TRANSIT:
+                return "mdi:transit-connection-variant"
+            if lastEventCode in PARCEL_COLLECTION:
+                return "mdi:human-dolly"
+
+        return self.entity_description.icon
+
+    def update_attributes(self) -> dict[str, Any]:
+        """Update Attributes."""
         attributes = {}
 
         mail_piece_data = self.data
@@ -399,3 +382,33 @@ class RoyalMailSensor(SensorEntity):
                 else:
                     attributes[key] = value
         return attributes
+
+    def update_parcel_data(self, data):
+        """Update parcel data."""
+        self.data = data
+        self._available = self.update_available()
+        self._attr_icon = self.update_icon()
+        self._state = self.update_state()
+        self.attrs = self.update_attributes()
+
+        self.async_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        """Return if the entity is available."""
+        return self.update_available()
+
+    @property
+    def icon(self) -> str:
+        """Return a representative icon of the timer."""
+        return self.update_icon()
+
+    @property
+    def native_value(self) -> str | date | None:
+        """Native value."""
+        return self.update_state()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Define entity attributes."""
+        return self.update_attributes()
