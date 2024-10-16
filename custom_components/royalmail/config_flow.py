@@ -9,9 +9,8 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntryState, ConfigFlowResult
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -61,10 +60,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @callback
+    def _entry_exists(self):
+        """Check if an entry for this domain already exists."""
+        existing_entries = self._async_current_entries()
+        return len(existing_entries) > 0
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the initial step."""
+        if self._entry_exists():
+            return self.async_abort(reason="already_configured")
 
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -111,7 +118,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
-    async def async_step_import(self, import_data=None) -> FlowResult:
+    async def async_step_import(self, import_data=None) -> ConfigFlowResult:
         """Handle the import step for the service call."""
 
         if import_data is not None:
@@ -168,7 +175,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Explicitly handle the case where import_data is None
         return self.async_abort(reason="no_import_data")
 
-    async def async_step_reauth(self, user_input: Mapping[str, Any]) -> FlowResult:
+    async def async_step_reauth(
+        self, user_input: Mapping[str, Any]
+    ) -> ConfigFlowResult:
         """Handle reauth step."""
 
         session = async_get_clientsession(self.hass)
@@ -197,7 +206,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the re-auth step."""
         if user_input is not None:
             # Here you would handle any form submission from the user
@@ -219,7 +228,7 @@ class RoyalMailFlowHandler(config_entries.OptionsFlow):
         """Init."""
         self.config_entry = config_entry
 
-    async def async_step_init(self, user_input=None) -> FlowResult:
+    async def async_step_init(self, user_input=None) -> ConfigFlowResult:
         """Init."""
         return self.async_show_form(
             step_id="init",
