@@ -258,7 +258,7 @@ class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
             # Name of the data. For logging purposes.
             name="Royal Mail",
             # Polling interval. Will only be polled if there are subscribers.
-            update_interval=timedelta(minutes=30),
+            update_interval=timedelta(minutes=45),
         )
         self.authenticating = False
         self.session = session
@@ -374,7 +374,7 @@ class RoyalMailTokensCoordinator(DataUpdateCoordinator):
             # Name of the data. For logging purposes.
             name="Royal Mail",
             # Polling interval. Will only be polled if there are subscribers.
-            update_interval=timedelta(seconds=300),
+            update_interval=None,
         )
         self.session = session
         self.device_id = str(uuid.uuid4().hex.upper()[0:6])
