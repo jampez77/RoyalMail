@@ -108,6 +108,9 @@
     },
     "duplicate_account": {
       "message": "This Royal Mail account is already set up as {title}. Delete one of the two entries."
+    },
+    "tracked_in_several_accounts": {
+      "message": "{reference} is tracked in more than one Royal Mail account ({accounts}). Choose the account to remove it from."
     }
   },
   "services": {
@@ -115,6 +118,10 @@
       "name": "Track your item",
       "description": "Adds an item to your Royal Mail tracked items, so it gets a sensor.",
       "fields": {
+        "config_entry_id": {
+          "name": "Account",
+          "description": "The Royal Mail account to add the item to. Only needed when you've added more than one."
+        },
         "reference_number": {
           "name": "Reference number",
           "description": "The tracking reference, for example AB123456789GB."
@@ -125,6 +132,10 @@
       "name": "Stop tracking an item",
       "description": "Removes an item from your Royal Mail tracked items, along with its sensor.",
       "fields": {
+        "config_entry_id": {
+          "name": "Account",
+          "description": "The Royal Mail account to remove the item from. Without it, the item is removed from whichever account tracks it."
+        },
         "reference_number": {
           "name": "Reference number",
           "description": "The tracking reference, for example AB123456789GB."
