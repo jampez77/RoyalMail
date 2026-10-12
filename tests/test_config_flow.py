@@ -21,7 +21,14 @@ from custom_components.royalmail.api import (
 )
 from custom_components.royalmail.const import CONF_SESSION, DATA_LOGIN_THROTTLE, DOMAIN
 
-from .conftest import PASSWORD, SESSION, USER_ID, USERNAME
+from .conftest import (
+    PASSWORD,
+    SECOND_USER_ID,
+    SECOND_USERNAME,
+    SESSION,
+    USER_ID,
+    USERNAME,
+)
 
 pytestmark = pytest.mark.usefixtures("mock_setup_entry")
 
@@ -100,19 +107,67 @@ async def test_user_flow_errors(
     assert result["data"][CONF_PASSWORD] == PASSWORD
 
 
-async def test_single_instance(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_client: MagicMock
+async def test_second_account(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client_class: MagicMock,
+    second_client: MagicMock,
 ) -> None:
-    """Test only one Royal Mail account can be added."""
+    """Test another Royal Mail account can be added alongside the first."""
     mock_config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: SECOND_USERNAME, CONF_PASSWORD: PASSWORD}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == SECOND_USERNAME
+    assert result["result"].unique_id == SECOND_USER_ID
+    second_client.async_login.assert_awaited_once()
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 2
+
+
+async def test_same_email(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client_class: MagicMock,
+) -> None:
+    """Test an email that's already set up is turned away without a login."""
+    mock_config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: " User@Example.COM", CONF_PASSWORD: "x"}
+    )
 
     assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
-    mock_client.async_login.assert_not_awaited()
+    assert result["reason"] == "already_configured"
+    mock_client_class.assert_not_called()
+
+
+async def test_same_account(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """Test an account that's set up under another email is turned away."""
+    mock_config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_USERNAME: "new-address@example.com", CONF_PASSWORD: PASSWORD},
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    mock_client.async_login.assert_awaited_once()
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
 
 
 async def test_reauth(

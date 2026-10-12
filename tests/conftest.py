@@ -3,7 +3,7 @@
 from collections.abc import Generator
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -11,12 +11,14 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
-from custom_components.royalmail.api import ApiConfig, Parcel
+from custom_components.royalmail.api import ApiConfig, Parcel, RoyalMailWebClient
 from custom_components.royalmail.const import CONF_SESSION, DOMAIN
 
 USERNAME = "user@example.com"
 PASSWORD = "correct-horse"
 USER_ID = "100000001"
+SECOND_USERNAME = "other@example.com"
+SECOND_USER_ID = "100000002"
 
 API_CONFIG = ApiConfig(
     client_id="fake-client-id",
@@ -100,8 +102,46 @@ def mock_config_entry() -> MockConfigEntry:
 
 
 @pytest.fixture
-def mock_client_class() -> Generator[MagicMock]:
-    """Replace the web client everywhere the integration creates one."""
+def second_config_entry() -> MockConfigEntry:
+    """Return a config entry for a second Royal Mail account."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title=SECOND_USERNAME,
+        unique_id=SECOND_USER_ID,
+        version=1,
+        minor_version=2,
+        data={
+            CONF_USERNAME: SECOND_USERNAME,
+            CONF_PASSWORD: PASSWORD,
+            CONF_SESSION: SESSION,
+        },
+    )
+
+
+def _set_up_client(client: MagicMock, user_id: str) -> None:
+    """Make a mocked client sign in to an account that tracks make_parcels()."""
+    client.user_id = user_id
+    client.state = dict(SESSION)
+    client.config = API_CONFIG
+    client.async_get_parcels.return_value = make_parcels()
+    client.async_track.return_value = {}
+
+
+@pytest.fixture
+def second_client() -> MagicMock:
+    """Return the mocked web client for SECOND_USERNAME."""
+    client: MagicMock = create_autospec(RoyalMailWebClient, instance=True)
+    _set_up_client(client, SECOND_USER_ID)
+    return client
+
+
+@pytest.fixture
+def mock_client_class(second_client: MagicMock) -> Generator[MagicMock]:
+    """Replace the web client everywhere the integration creates one.
+
+    SECOND_USERNAME gets second_client; any other username gets the
+    class's return_value, signed in to USER_ID's account.
+    """
     with (
         patch(
             "custom_components.royalmail.RoyalMailWebClient", autospec=True
@@ -111,12 +151,10 @@ def mock_client_class() -> Generator[MagicMock]:
             new=client_class,
         ),
     ):
-        client = client_class.return_value
-        client.user_id = USER_ID
-        client.state = dict(SESSION)
-        client.config = API_CONFIG
-        client.async_get_parcels.return_value = make_parcels()
-        client.async_track.return_value = {}
+        _set_up_client(client_class.return_value, USER_ID)
+        client_class.side_effect = lambda username, *args, **kwargs: (
+            second_client if username == SECOND_USERNAME else client_class.return_value
+        )
         yield client_class
 
 

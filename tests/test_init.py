@@ -7,7 +7,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
@@ -15,11 +15,12 @@ from custom_components.royalmail.api import (
     CannotConnect,
     CaptchaRequired,
     InvalidAuth,
+    Parcel,
     RateLimited,
 )
 from custom_components.royalmail.const import CONF_SESSION, DATA_LOGIN_THROTTLE, DOMAIN
 
-from .conftest import PASSWORD, SESSION, USER_ID, USERNAME
+from .conftest import PASSWORD, SECOND_USER_ID, SESSION, USER_ID, USERNAME
 
 
 def legacy_entry(email: str) -> MockConfigEntry:
@@ -229,6 +230,63 @@ async def test_duplicate_account(
     assert entry.state is ConfigEntryState.SETUP_ERROR
     assert entry.error_reason_translation_key == "duplicate_account"
     assert entry.unique_id == "old-address@example.com"
+
+
+async def test_two_accounts(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    second_config_entry: MockConfigEntry,
+    mock_client_class: MagicMock,
+    second_client: MagicMock,
+) -> None:
+    """Test two accounts run side by side, even with items of the same alias."""
+    entity_registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
+    mock_client = mock_client_class.return_value
+    mock_client.async_get_parcels.return_value = {
+        "AB123456789GB": Parcel("AB123456789GB", alias="iPad")
+    }
+    second_client.async_get_parcels.return_value = {
+        "CD987654321GB": Parcel("CD987654321GB", alias="iPad")
+    }
+    accounts = [
+        (mock_config_entry, USER_ID, "ab123456789gb"),
+        (second_config_entry, SECOND_USER_ID, "cd987654321gb"),
+    ]
+    mock_config_entry.add_to_hass(hass)
+    second_config_entry.add_to_hass(hass)
+    # Setting up the integration sets up every entry.
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    for entry, user_id, reference in accounts:
+        assert entry.state is ConfigEntryState.LOADED
+        device = device_registry.async_get_device_by_identifier(
+            (DOMAIN, user_id), entry.entry_id
+        )
+        assert device is not None
+        assert device.name == user_id
+        assert (
+            entity_registry.async_get_entity_id(
+                SENSOR_DOMAIN, DOMAIN, f"royalmail-{user_id}-{reference}"
+            )
+            == f"sensor.{user_id}_ipad"
+        )
+        assert hass.states.get(f"sensor.{user_id}_tracked_parcels").state == "1"
+    assert mock_client_class.call_count == 2
+    assert all(
+        call.kwargs["login_throttle"] is hass.data[DATA_LOGIN_THROTTLE]
+        for call in mock_client_class.call_args_list
+    )
+
+    await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert mock_config_entry.state is ConfigEntryState.NOT_LOADED
+    assert second_config_entry.state is ConfigEntryState.LOADED
+    mock_client.async_close.assert_awaited_once()
+    second_client.async_close.assert_not_awaited()
+    assert hass.states.get(f"sensor.{SECOND_USER_ID}_ipad").state == STATE_UNKNOWN
 
 
 async def test_migrate_from_future_version(

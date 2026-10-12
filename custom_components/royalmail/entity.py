@@ -33,9 +33,11 @@ class RoyalMailEntity(CoordinatorEntity[RoyalMailCoordinator]):
         super().__init__(coordinator)
         entry = coordinator.config_entry
         self._attr_unique_id = entity_unique_id(entry, key)
+        # Naming the device after the account keeps entity IDs apart when two
+        # accounts track items with the same alias.
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, account_id(entry))},
-            name="Royal Mail",
+            name=account_id(entry),
             manufacturer="Royal Mail",
             entry_type=DeviceEntryType.SERVICE,
             configuration_url=TRACK_PAGE_URL,

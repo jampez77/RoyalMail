@@ -21,10 +21,11 @@ from custom_components.royalmail.api import CannotConnect, Parcel
 from custom_components.royalmail.const import DOMAIN, UPDATE_INTERVAL
 from custom_components.royalmail.sensor import parcel_state
 
-from .conftest import USERNAME, make_parcels
+from .conftest import USER_ID, USERNAME, make_parcels
 
-TOTAL = "sensor.royal_mail_tracked_parcels"
-KETTLE = "sensor.royal_mail_kettle"
+TOTAL = f"sensor.{USER_ID}_tracked_parcels"
+KETTLE = f"sensor.{USER_ID}_kettle"
+BOOKS = f"sensor.{USER_ID}_books"
 
 
 async def _poll(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -62,7 +63,7 @@ async def test_items_added_and_removed(
 
     assert hass.states.get(KETTLE) is None
     assert entity_registry.async_get(KETTLE) is None
-    assert hass.states.get("sensor.royal_mail_books").state == "unknown"
+    assert hass.states.get(BOOKS).state == "unknown"
     assert hass.states.get(TOTAL).state == "4"
 
     # An item that comes back gets a sensor again.
@@ -70,7 +71,7 @@ async def test_items_added_and_removed(
     await _poll(hass, freezer)
 
     assert hass.states.get(KETTLE).state == "delivered"
-    assert hass.states.get("sensor.royal_mail_books") is None
+    assert hass.states.get(BOOKS) is None
 
 
 @pytest.mark.usefixtures("init_integration")
@@ -109,9 +110,9 @@ async def test_item_details_update(
     mock_client.async_get_parcels.return_value = parcels
     await _poll(hass, freezer)
 
-    state = hass.states.get("sensor.royal_mail_1b0000000000000000001")
+    state = hass.states.get(f"sensor.{USER_ID}_1b0000000000000000001")
     assert state.state == "delivered"
-    assert state.attributes["friendly_name"] == "Royal Mail Lamp"
+    assert state.attributes["friendly_name"] == f"{USER_ID} Lamp"
     assert state.attributes["last_event"] == "Delivered"
     assert hass.states.get(TOTAL).attributes["out_for_delivery"] == []
 

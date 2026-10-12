@@ -10,6 +10,5 @@
   "issue_tracker": "https://github.com/jampez77/RoyalMail/issues",
   "loggers": ["curl_cffi"],
   "requirements": ["curl_cffi==0.16.3"],
-  "single_config_entry": true,
   "version": "2026.10.0"
 }

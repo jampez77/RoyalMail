@@ -77,6 +77,13 @@ class RoyalMailConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             username = user_input[CONF_USERNAME].strip()
             password = user_input[CONF_PASSWORD]
+            # Royal Mail limits logins, so catch an obvious repeat first.
+            if any(
+                str(entry.data.get(CONF_USERNAME, "")).strip().casefold()
+                == username.casefold()
+                for entry in self._async_current_entries(include_ignore=False)
+            ):
+                return self.async_abort(reason="already_configured")
             # Keep the session so setting up doesn't sign in a second time;
             # Royal Mail blocks logins that come in quick succession.
             signed_in = await _async_sign_in(self.hass, username, password, errors)

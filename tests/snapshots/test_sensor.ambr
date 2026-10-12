@@ -1,5 +1,5 @@
 # serializer version: 1
-# name: test_sensors[sensor.royal_mail_1b0000000000000000001-entry]
+# name: test_sensors[sensor.100000001_1b0000000000000000001-entry]
   EntityRegistryEntrySnapshot({
     'aliases': list([
       None,
@@ -21,7 +21,7 @@
     'disabled_by': None,
     'domain': 'sensor',
     'entity_category': None,
-    'entity_id': 'sensor.royal_mail_1b0000000000000000001',
+    'entity_id': 'sensor.100000001_1b0000000000000000001',
     'has_entity_name': True,
     'hidden_by': None,
     'icon': None,
@@ -44,13 +44,13 @@
     'unit_of_measurement': None,
   })
 # ---
-# name: test_sensors[sensor.royal_mail_1b0000000000000000001-state]
+# name: test_sensors[sensor.100000001_1b0000000000000000001-state]
   StateSnapshot({
     'attributes': ReadOnlyDict({
       'alias': None,
       'carrier': None,
       <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
-      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Royal Mail 1B0000000000000000001',
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: '100000001 1B0000000000000000001',
       'last_event': 'Out for delivery',
       'last_event_location': None,
       'last_event_time': datetime.datetime(2026, 10, 12, 9, 30, tzinfo=datetime.timezone.utc),
@@ -67,14 +67,14 @@
       'tracking_number': '1B0000000000000000001',
     }),
     'context': <ANY>,
-    'entity_id': 'sensor.royal_mail_1b0000000000000000001',
+    'entity_id': 'sensor.100000001_1b0000000000000000001',
     'last_changed': <ANY>,
     'last_reported': <ANY>,
     'last_updated': <ANY>,
     'state': 'out_for_delivery',
   })
 # ---
-# name: test_sensors[sensor.royal_mail_kettle-entry]
+# name: test_sensors[sensor.100000001_kettle-entry]
   EntityRegistryEntrySnapshot({
     'aliases': list([
       None,
@@ -96,7 +96,7 @@
     'disabled_by': None,
     'domain': 'sensor',
     'entity_category': None,
-    'entity_id': 'sensor.royal_mail_kettle',
+    'entity_id': 'sensor.100000001_kettle',
     'has_entity_name': True,
     'hidden_by': None,
     'icon': None,
@@ -119,13 +119,13 @@
     'unit_of_measurement': None,
   })
 # ---
-# name: test_sensors[sensor.royal_mail_kettle-state]
+# name: test_sensors[sensor.100000001_kettle-state]
   StateSnapshot({
     'attributes': ReadOnlyDict({
       'alias': 'Kettle',
       'carrier': 'Royal Mail',
       <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
-      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Royal Mail Kettle',
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: '100000001 Kettle',
       'last_event': 'Delivered',
       'last_event_location': 'Example Delivery Office',
       'last_event_time': datetime.datetime(2026, 10, 12, 9, 30, tzinfo=datetime.timezone.utc),
@@ -142,14 +142,14 @@
       'tracking_number': 'AB123456789GB',
     }),
     'context': <ANY>,
-    'entity_id': 'sensor.royal_mail_kettle',
+    'entity_id': 'sensor.100000001_kettle',
     'last_changed': <ANY>,
     'last_reported': <ANY>,
     'last_updated': <ANY>,
     'state': 'delivered',
   })
 # ---
-# name: test_sensors[sensor.royal_mail_shoes-entry]
+# name: test_sensors[sensor.100000001_shoes-entry]
   EntityRegistryEntrySnapshot({
     'aliases': list([
       None,
@@ -171,7 +171,7 @@
     'disabled_by': None,
     'domain': 'sensor',
     'entity_category': None,
-    'entity_id': 'sensor.royal_mail_shoes',
+    'entity_id': 'sensor.100000001_shoes',
     'has_entity_name': True,
     'hidden_by': None,
     'icon': None,
@@ -194,13 +194,13 @@
     'unit_of_measurement': None,
   })
 # ---
-# name: test_sensors[sensor.royal_mail_shoes-state]
+# name: test_sensors[sensor.100000001_shoes-state]
   StateSnapshot({
     'attributes': ReadOnlyDict({
       'alias': 'Shoes',
       'carrier': None,
       <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
-      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Royal Mail Shoes',
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: '100000001 Shoes',
       'last_event': 'Delivered to Your Collection Point',
       'last_event_location': None,
       'last_event_time': datetime.datetime(2026, 10, 12, 9, 30, tzinfo=datetime.timezone.utc),
@@ -217,14 +217,14 @@
       'tracking_number': 'CD987654321GB',
     }),
     'context': <ANY>,
-    'entity_id': 'sensor.royal_mail_shoes',
+    'entity_id': 'sensor.100000001_shoes',
     'last_changed': <ANY>,
     'last_reported': <ANY>,
     'last_updated': <ANY>,
     'state': 'ready_for_collection',
   })
 # ---
-# name: test_sensors[sensor.royal_mail_tracked_parcels-entry]
+# name: test_sensors[sensor.100000001_tracked_parcels-entry]
   EntityRegistryEntrySnapshot({
     'aliases': list([
       None,
@@ -238,7 +238,7 @@
     'disabled_by': None,
     'domain': 'sensor',
     'entity_category': None,
-    'entity_id': 'sensor.royal_mail_tracked_parcels',
+    'entity_id': 'sensor.100000001_tracked_parcels',
     'has_entity_name': True,
     'hidden_by': None,
     'icon': None,
@@ -261,10 +261,10 @@
     'unit_of_measurement': None,
   })
 # ---
-# name: test_sensors[sensor.royal_mail_tracked_parcels-state]
+# name: test_sensors[sensor.100000001_tracked_parcels-state]
   StateSnapshot({
     'attributes': ReadOnlyDict({
-      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Royal Mail Tracked parcels',
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: '100000001 Tracked parcels',
       'out_for_delivery': list([
         '1B0000000000000000001',
       ]),
@@ -279,14 +279,14 @@
       ]),
     }),
     'context': <ANY>,
-    'entity_id': 'sensor.royal_mail_tracked_parcels',
+    'entity_id': 'sensor.100000001_tracked_parcels',
     'last_changed': <ANY>,
     'last_reported': <ANY>,
     'last_updated': <ANY>,
     'state': '4',
   })
 # ---
-# name: test_sensors[sensor.royal_mail_unknown_item-entry]
+# name: test_sensors[sensor.100000001_unknown_item-entry]
   EntityRegistryEntrySnapshot({
     'aliases': list([
       None,
@@ -308,7 +308,7 @@
     'disabled_by': None,
     'domain': 'sensor',
     'entity_category': None,
-    'entity_id': 'sensor.royal_mail_unknown_item',
+    'entity_id': 'sensor.100000001_unknown_item',
     'has_entity_name': True,
     'hidden_by': None,
     'icon': None,
@@ -331,13 +331,13 @@
     'unit_of_measurement': None,
   })
 # ---
-# name: test_sensors[sensor.royal_mail_unknown_item-state]
+# name: test_sensors[sensor.100000001_unknown_item-state]
   StateSnapshot({
     'attributes': ReadOnlyDict({
       'alias': 'Unknown item',
       'carrier': None,
       <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
-      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Royal Mail Unknown item',
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: '100000001 Unknown item',
       'last_event': None,
       'last_event_location': None,
       'last_event_time': None,
@@ -354,7 +354,7 @@
       'tracking_number': 'EF111111111GB',
     }),
     'context': <ANY>,
-    'entity_id': 'sensor.royal_mail_unknown_item',
+    'entity_id': 'sensor.100000001_unknown_item',
     'last_changed': <ANY>,
     'last_reported': <ANY>,
     'last_updated': <ANY>,
