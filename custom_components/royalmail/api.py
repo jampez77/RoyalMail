@@ -48,6 +48,10 @@ CONFIG_MAX_AGE = 24 * 3600
 CONFIG_RETRY_AFTER = 3600
 API_SESSION_HEADER = "x-rmg-api-session"
 API_SESSION_FALLBACK_TTL = 110
+# Royal Mail blocks logins after a few attempts in quick succession, so after a
+# refusal we wait before trying again, doubling the wait each time.
+LOGIN_BACKOFF = 30 * 60
+LOGIN_BACKOFF_MAX = 4 * 3600
 
 _FORM_BUILD_ID = re.compile(r'name="form_build_id"\s+value="([^"]+)"')
 _RATE_LIMIT_MARKERS = ("experiencing technical issues", "temporarily blocked")
@@ -195,6 +199,8 @@ class RoyalMailWebClient:
         self._config_fetched = 0.0
         self._api_session: str | None = None
         self._api_session_expiry = 0.0
+        self._login_retry_at = 0.0
+        self._login_backoff: float = LOGIN_BACKOFF
         if state:
             self._restore(state)
 
@@ -222,6 +228,8 @@ class RoyalMailWebClient:
             ],
             "config": asdict(self._config) if self._config else None,
             "config_fetched": self._config_fetched,
+            "login_retry_at": self._login_retry_at,
+            "login_backoff": self._login_backoff,
         }
 
     async def async_close(self) -> None:
@@ -264,6 +272,8 @@ class RoyalMailWebClient:
 
     async def async_login(self) -> None:
         """Sign in to www.royalmail.com with the username and password."""
+        if (wait := self._login_retry_at - time.time()) > 0:
+            raise RateLimited(f"Not retrying the login for another {wait:.0f}s")
         self._session.cookies.clear()
         self._jwt = None
         self._jwt_claims = {}
@@ -298,9 +308,13 @@ class RoyalMailWebClient:
             raise CannotConnect(f"Login returned HTTP {response.status_code}")
         if not self._has_web_session() or back_on_form:
             if _rate_limited(response.text):
+                self._login_retry_at = time.time() + self._login_backoff
+                self._login_backoff = min(self._login_backoff * 2, LOGIN_BACKOFF_MAX)
                 raise RateLimited("Royal Mail is temporarily refusing logins")
             raise InvalidAuth("Royal Mail rejected the username or password")
         _LOGGER.debug("Signed in to royalmail.com")
+        self._login_retry_at = 0.0
+        self._login_backoff = LOGIN_BACKOFF
         await self.async_load_config(force=True)
 
     async def async_ensure_token(self) -> str:
@@ -523,6 +537,11 @@ class RoyalMailWebClient:
             if token := state.get("jwt"):
                 self._jwt_claims = _jwt_claims(token)
                 self._jwt = token
+            self._login_retry_at = float(state.get("login_retry_at") or 0)
+            self._login_backoff = min(
+                max(float(state.get("login_backoff") or 0), LOGIN_BACKOFF),
+                LOGIN_BACKOFF_MAX,
+            )
         except (KeyError, TypeError, ValueError, AttributeError) as err:
             _LOGGER.debug("Ignoring unusable saved Royal Mail session: %s", err)
             self._session.cookies.clear()
