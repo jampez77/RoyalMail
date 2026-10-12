@@ -101,7 +101,9 @@ async def _async_adopt_account_id(
 
     await er.async_migrate_entries(hass, entry.entry_id, _new_unique_id)
     device_registry = dr.async_get(hass)
-    if device := device_registry.async_get_device(identifiers={(DOMAIN, old_id)}):
+    if device := device_registry.async_get_device_by_identifier(
+        (DOMAIN, old_id), entry.entry_id
+    ):
         device_registry.async_update_device(
             device.id, new_identifiers={(DOMAIN, user_id)}
         )
