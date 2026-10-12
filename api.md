@@ -1,404 +1,313 @@
-### API Documentation - Anonymized Version
+# Royal Mail web API
 
-Below is an anonymized version of the API documentation. Sensitive information like API keys, tokens, and personal data has been replaced with placeholders.
+These are notes on the requests royalmail.com makes when you track items while signed in, which the integration repeats. Royal Mail doesn't document or support this API, so any of it can change. Tokens, IDs and personal details below are placeholders.
 
-## Event Codes
+`custom_components/royalmail/api.py` implements everything here.
 
-This is by no means an extensive list of event codes that a parcel can encounter but i'll put what i find here as they can provide useful information especially when used with the corresponding location name.
+## Overview
 
-- EVKSP: Delivered and Signed
-- EVKSF: Delivered to Safeplace by
-- EVGPD: Due to be delivered today
-- EVNSR: Item Prepared for Redelivery
-- EVNDA: Available for Redelivery or Collection
-- EVKNA: Delivery Attempted - No Answer
-- EVODO: Item Despatched to DO
-- EVORI: Arrived at
-- EVODO: Item Despatched to MC
-- EVOAC: Item received at
-- EVAIE/EVAIP: Sender preparing/despatching item
-- EVPPA: Accepted at Parcelshop
-- EVDAV/EVIMC/EVDAC/EVBAV/EVIAV: Item Received
-- EVKOP: Delivered by
-- EVNRT: Item Retention
-- EVOCO: We've received your item and its now being processed for delivery.
-- EVKNR: Delivery Attempted
-- RSRXS/RORXS: Delivery request received
-- EVKLS: Delivered to Your Collection Point by
-- EVPLA: Available for collection
-- EVPLC: Collected
+1. Read the web API settings from the website's runtime config.
+2. Sign in to www.royalmail.com with a form post, which sets a session cookie.
+3. Use the session cookie to get a JWT for the web API. Repeat this step, not the sign-in, when the JWT expires.
+4. Call the web API with the JWT: read the tracked-items history, then the summary of every item in it.
 
+www.royalmail.com is behind Akamai, which only lets through clients that look like a real browser at the TLS level. The integration uses [curl_cffi](https://github.com/lexiforest/curl_cffi) with `impersonate="chrome"` for every request; plain Python HTTP clients are blocked. A fresh session is enough, with no JavaScript run: the cookies Akamai sets on the first page load are accepted for the sign-in.
 
-# Royal Mail Tracking API
+The web API host itself (`api-web.royalmail.com`) needs no Akamai cookies.
 
-## Authentication
+## Runtime config
 
-### Login
-**Request:**
+**GET** `https://www.royalmail.com/spalp/rml_track_and_trace/json`
 
-****POST****: `https://api.example.com/login/v1/tokens`
+No sign-in needed. The track page loads its settings from here, and so does the integration, so nothing about the web API is hardcoded. The JavaScript bundle also carries a copy of these settings, but it's out of date (it points at a test host with a different client ID), so use this endpoint.
 
-***Headers:***
-- `x-ibm-client-id = e83f49c439b0ebc0b130692bcb8b1cde`
+The parts the integration reads:
 
-***Body:***
 ```json
 {
-   "device_id": "<UNIQUE_DEVICE_ID>",
-   "grant_type": "password",
-   "password": "<YOUR_PASSWORD>",
-   "username": "<YOUR_EMAIL>"
-}
-```
-***Response:***
-```json
-{
-   "access_token": "<ACCESS_TOKEN>",
-   "refresh_token": "<REFRESH_TOKEN>",
-   "token_type": "Bearer",
-   "expires_in": 7199,
-   "guid": "<USER_GUID>",
-   "first_name": "<FIRST_NAME>"
+  "appConfig": {
+    "epsApiConfig": {
+      "baseUrl": "https://api-web.royalmail.com",
+      "mailpieces": "/mailpieces/v3/",
+      "user": "user",
+      "history": "history",
+      "summary": "summary",
+      "events": "events",
+      "jwtToken": "/user-data/jwt-token",
+      "networkTimeOut(in_seconds)": 20,
+      "ibmClientId": "<CLIENT_ID>"
+    }
+  },
+  "appText": {
+    "localisation": {
+      "apiLanguage": "en_GB"
+    }
+  }
 }
 ```
 
-### Refresh Token
+| Key | Used for |
+| --- | --- |
+| `ibmClientId` | The `x-ibm-client-id` header, and the last segment of the history URL. It's public: the website sends it to every visitor. |
+| `baseUrl`, `mailpieces` | The start of every web API URL: `{baseUrl}{mailpieces}`, below written as `{api}`. |
+| `user`, `history`, `summary`, `events` | Path segments. |
+| `jwtToken` | The path, on www.royalmail.com, of the token endpoint. |
+| `apiLanguage` | The `x-rmg-language` header. |
+| `networkTimeOut(in_seconds)` | The request timeout. |
 
-This should be called if a `401 Unauthorized` response is received.
+`epsApiConfig` has other keys, for features the integration doesn't use, such as customer-reference tracking.
 
-**Request**
+The integration fetches the config on every sign-in and when its copy is a day old. If the web API rejects the client ID, it fetches the config again and retries once. If fetching fails, it keeps using the copy it has.
 
-****POST****: `https://api.royalmail.net/login/v1/tokens`
+## Signing in
 
-***Headers***:
-- `x-ibm-client-id`: `e83f49c439b0ebc0b130692bcb8b1cde`
+### 1. Load the sign-in page
 
-***Body***:
-```json
-{
-   "device_id": "<UNIQUE_DEVICE_ID>",
-   "grant_type": "refresh_token",
-   "refresh_token": "<REFRESH_TOKEN>"
-}
-```
-***Response:***
-```json
-{
-   "access_token": "<ACCESS_TOKEN>",
-   "refresh_token": "<REFRESH_TOKEN>",
-   "token_type": "Bearer",
-   "expires_in": 7199,
-   "guid": "<USER_GUID>",
-   "first_name": "<FIRST_NAME>"
-}
+**GET** `https://www.royalmail.com/login`
+
+The page is a Drupal site. Find the `<form>` that contains `user_login_form` and take its hidden `form_build_id` value:
+
+```html
+<input type="hidden" name="form_build_id" value="form-<RANDOM>" />
 ```
 
-## Pending Items
+This request also picks up the Akamai cookies.
 
-**Request**
+### 2. Post the form
 
-****GET****: `https://api.royalmail.net/track/v2/pending/items`
+**POST** `https://www.royalmail.com/login`
 
-***Headers***:
-- `Authorization`: `Bearer (session access_token)`
-- `x-ibm-client-id`: `e83f49c439b0ebc0b130692bcb8b1cde`
-- `origin`: `consumermobile.royalmail.com`
+Form-encoded body:
 
-***Response***
+| Field | Value |
+| --- | --- |
+| `name` | Email address |
+| `pass` | Password |
+| `form_build_id` | From step 1 |
+| `form_id` | `user_login_form` |
+| `op` | `Log in` |
+
+Send `Origin: https://www.royalmail.com` and `Referer: https://www.royalmail.com/login`.
+
+**Success**: a redirect to `/?check_logged_in=1`, and an `SSESS<HASH>` session cookie, plus an `authToken` cookie.
+
+**Failure**: you end up back on `/login` with no `SSESS` cookie.
+
+- If the page says *experiencing technical issues* or *temporarily blocked*, Royal Mail is refusing sign-ins. That happens after about three sign-ins in a few minutes. Wait at least 30 minutes; the integration doubles the wait after each refusal, up to four hours.
+- Otherwise the email address or password is wrong.
+
+Because of the rate limit, sign in as rarely as possible: keep the session cookies and use them to get new tokens.
+
+## Access token
+
+**GET** `https://www.royalmail.com/user-data/jwt-token` (the `jwtToken` path from the config)
+
+Needs the session cookies, and `X-Requested-With: XMLHttpRequest`.
 
 ```json
 {
-   "totalRecords": 0,
-   "mailPieces": []
-}
-```
-
-## Mailpieces
-
-**Request**
-
-****GET****: `https://api.royalmail.net/mailpieces/v3.1/user/<GUID>/history/<IBM-CLIENT-ID>?limit=6`
-
-***Headers***:
-- `Authorization`: `Bearer (session access_token)`
-- `x-ibm-client-id`: `e83f49c439b0ebc0b130692bcb8b1cde`
-- `origin`: `consumermobile.royalmail.com`
-
-**Response**
-
-```json
-{
-   "mpDetails": [
-       {
-           "lastAccessedTimestamp": 1723803963880,
-           "mailPieceId": "AA123456789US"
-       },
-       {
-           "lastAccessedTimestamp": 1686773055097,
-           "mailPieceId": "AA123456789US"
-       }
-   ],
-   "jwt": "************"
+  "jwt_token": "<JWT>"
 }
 ```
 
-## Mailpiece
+The JWT is valid for about two hours. Its payload carries:
 
-**Request**
+| Claim | Meaning |
+| --- | --- |
+| `sub` | The account's user ID, used in history URLs. |
+| `exp` | Expiry, in Unix seconds. |
 
-****GET****: `https://api.royalmail.net/mailpieces/v3.1/<MAILPIECE-ID>/events`
+A non-200 response, or a body without `jwt_token`, means the session has expired: sign in again.
 
-***Headers***:
-- `Authorization`: `Bearer (session access_token)`
-- `x-ibm-client-id`: `e83f49c439b0ebc0b130692bcb8b1cde`
-- `origin`: `consumermobile.royalmail.com`
+## Web API requests
 
-**Response**
+Every request to `{api}` sends:
+
+| Header | Value |
+| --- | --- |
+| `x-ibm-client-id` | `ibmClientId` from the config |
+| `x-rmg-auth-token` | `Bearer <JWT>` |
+| `x-rmg-language` | `apiLanguage` from the config, for example `en_GB` |
+| `Origin` | `https://www.royalmail.com` |
+| `Referer` | `https://www.royalmail.com/` |
+| `x-rmg-api-session` | Only if an earlier response sent one; see [Captcha](#captcha) |
+
+### Tracked-items history
+
+**GET** `{api}user/{sub}/history/{ibmClientId}`
+
+Returns the account's tracked items: the list royalmail.com shows as *Recently tracked items*. It includes items tracked in the Royal Mail app, with the aliases set there.
 
 ```json
 {
-   "mailPieces": {
-       "mailPieceId": "AA123456789US",
-       "carrierShortName": "RM",
-       "carrierFullName": "Royal Mail Group Ltd",
-       "summary": {
-           "uniqueItemId": "************",
-           "oneDBarcode": "AA123456789US",
-           "productId": "TPL01",
-           "productName": "Royal Mail Tracked 48",
-           "productDescription": "Aims to deliver within 2-3 days with online tracking",
-           "productCategory": "NON-INTERNATIONAL",
-           "destinationCountryCode": "GB",
-           "destinationCountryName": "United Kingdom",
-           "originCountryCode": "GB",
-           "originCountryName": "United Kingdom",
-           "lastEventCode": "EVKOP",
-           "lastEventName": "Delivered by",
-           "lastEventDateTime": "2023-07-18T12:19:25+01:00",
-           "lastEventLocationName": "London DO",
-           "statusDescription": "Delivered",
-           "statusCategory": "Delivered",
-           "statusHelpText": " ",
-           "summaryLine": "Your item was delivered on 18-07-2023."
-       },
-      "signature":{
-         "recipientName":"MR BLOBBY",
-         "signatureDateTime":"2023-07-18T12:19:25+01:00"
+  "jwt": "<SHORT_LIVED_JWT>",
+  "mpDetails": [
+    {
+      "mailPieceId": "AB123456789GB",
+      "lastAccessedTimestamp": 1760259000000,
+      "alias": "Kettle"
+    },
+    {
+      "mailPieceId": "1B0000000000000000001",
+      "lastAccessedTimestamp": 1760172600000
+    }
+  ]
+}
+```
+
+`alias` is missing when the item has none. `mpDetails` is empty when the account tracks nothing.
+
+`jwt` stands in for the list of items in the summary request below. It expires about a minute after it's issued, so make the summary request straight away.
+
+### Summary
+
+**GET** `{api}summary?mailPieceId=<SHORT_LIVED_JWT>`
+
+`mailPieceId` is the `jwt` from the history response, not a tracking number.
+
+```json
+{
+  "mailPieces": [
+    {
+      "mailPieceId": "AB123456789GB",
+      "status": "200",
+      "carrierShortName": "RM",
+      "carrierFullName": "Royal Mail Group Ltd",
+      "summary": {
+        "productName": "Royal Mail Tracked 48",
+        "lastEventCode": "EVKOP",
+        "lastEventName": "Delivered by",
+        "lastEventDateTime": "2026-10-12T10:30:00+01:00",
+        "lastEventLocationName": "Example Delivery Office",
+        "statusCategory": "Delivered",
+        "statusDescription": "Delivered",
+        "summaryLine": "Your item was delivered on 12-10-2026."
+      }
+    }
+  ]
+}
+```
+
+Only use `summary` when the item's `status` is `"200"`; otherwise Royal Mail has no tracking for it yet. Text fields can contain `**bold**` markers, which the website renders and the integration strips.
+
+A 400 or 401 response means the history `jwt` expired: fetch the history again and retry.
+
+### Events
+
+**GET** `{api}{reference}/events`
+
+The full tracking history of one item. Looking an item up while signed in also adds it to the account's tracked items, which is how the **Track your item** action works.
+
+This response hasn't been captured from the web API yet. The app API's equivalent, `/mailpieces/v3.1/{reference}/events`, returned the item's `summary` as above, plus an `events` list, newest first:
+
+```json
+{
+  "mailPieces": {
+    "mailPieceId": "AB123456789GB",
+    "carrierShortName": "RM",
+    "carrierFullName": "Royal Mail Group Ltd",
+    "summary": {
+      "productName": "Royal Mail Tracked 48",
+      "lastEventCode": "EVKOP",
+      "lastEventName": "Delivered by",
+      "statusCategory": "Delivered"
+    },
+    "events": [
+      {
+        "eventCode": "EVKOP",
+        "eventName": "Delivered by",
+        "eventDateTime": "2026-10-12T10:30:00+01:00",
+        "locationName": "Example Delivery Office"
       },
-      "proofOfDeliveryData":{
-         "recipientName":"MR BLOBBY",
-         "deliveryDateTime":"2023-07-18T12:19:25+01:00",
-         "signatureURI":"AA123456789US202408138271649706352724111173802",
-         "photoURI":"AA123456789US2024081510487362513724111173802"
-      },
-       "position": {
-           "longitude": **.*******,
-           "latitude": **.*******,
-           "altitude": ***.******
-       },
-       "events": [
-           {
-               "eventCode": "EVKOP",
-               "eventName": "Delivered by",
-               "eventDateTime": "2023-07-18T12:19:25+01:00",
-               "locationName": "London DO"
-           },
-           {
-               "eventCode": "EVGPD",
-               "eventName": "Due to be delivered today",
-               "eventDateTime": "2023-07-18T12:19:25+01:00",
-               "locationName": "London DO"
-           },
-           {
-               "eventCode": "EVIMC",
-               "eventName": "Item Received",
-               "eventDateTime": "2023-07-18T12:19:25+01:00",
-               "locationName": "Norfolk MC"
-           },
-           {
-               "eventCode": "EVDAV",
-               "eventName": "Item Received",
-               "eventDateTime": "2023-07-18T12:19:25+01:00",
-               "locationName": "Edinburgh Super Hub"
-           },
-           {
-               "eventCode": "EVAIE",
-               "eventName": "Sender despatching item",
-               "eventDateTime": "2023-07-18T12:19:25+01:00"
-           }
-       ],
-       "greenCredentials": {
-           "totalCO2e": 205,
-           "dataAccuracy": "Average"
-       },
-       "links": {
-           "summary": {
-               "href": "/mailpieces/v3/summary?mailPieceId=AA123456789US",
-               "title": "Summary",
-               "description": "Get summary"
-           },
-           "signature":{
-            "href":"/mailpieces/v3/AA123456789US/signature",
-            "title":"Signature",
-            "description":"Get Signature"
-           },
-           "signatureimage":{
-            "href":"/v1/images/AA123456789US202408987654321596352724111173802/image",
-            "title":"Signature Image",
-            "description":"Get Signature Image"
-           },
-           "imagePhoto": {
-               "href": "/v1/images/AA123456789US************/image",
-               "title": "Image",
-               "description": "Get Image"
-           },
-           "photo": {
-               "href": "/mailpieces/v3/AA123456789US/photo",
-               "title": "Photo",
-               "description": "Get photo"
-           },
-           "photoimage": {
-               "href": "/mailpieces/v3/AA123456789US/photoImage",
-               "title": "Photo Image",
-               "description": "Get photo image"
-           },
-           "imageSignature":{
-            "href":"/v1/images/AA123456789US20240815189876754343252724111173802/image",
-            "title":"Image Signature",
-            "description":"Get image signature"
-           }
-       }
-   }
+      {
+        "eventCode": "EVGPD",
+        "eventName": "Due to be delivered today",
+        "eventDateTime": "2026-10-12T06:15:00+01:00",
+        "locationName": "Example Delivery Office"
+      }
+    ]
+  }
 }
 ```
 
-## Tracking a New Mail Piece
+### Removing items
 
-To track a new mail piece and connect it to the account, follow these steps in sequential order. Once completed successfully, the new mail piece should appear in the `mpDetails` array within the Mailpieces response.
+**DELETE** `{api}user/{sub}/history/{ibmClientId}?mailPieceId=AB123456789GB,CD987654321GB`
 
-**1. Create Subscription**
+Removes one or more items, separated by commas, from the account's tracked items. That removes them from the app too.
 
-***Request***
+### Captcha
 
-****POST****: `https://api.royalmail.net/pushapi/app/v2/subscription/track/<MAILPIECE-ID>`
+The website treats tracking a new item and removing items as protected by a captcha. It sends one of:
 
-***Headers***:
-- `Authorization`: `Bearer (using session access_token)`
-- `x-ibm-client-id`: `e83f49c439b0ebc0b130692bcb8b1cde`
-- `origin`: `consumermobile.royalmail.com`
-- `Content-Type`: `application/json; charset=utf-8`
+- `x-rmg-api-session`: a token valid for about two minutes. Web API responses can carry it as a response header. The website stores the latest one and sends it back on the next requests, and so does the integration.
+- `x-rmg-recaptcha`: an hCaptcha token, after the user solves a captcha.
 
-**2. Push Notification**
+On 2026-10-12 the history and summary requests worked without either. Whether events and removal need one hasn't been tested yet. If Royal Mail answers 401 or 403 with a body that mentions a captcha or the API session, the integration reports that the action needs a captcha.
 
-Only continue with this request if `Create Subscription` returns a `200` response.
+### Errors
 
-***Request***
+The gateway answers with one of two JSON shapes:
 
-****PUT****: `https://rmappgateway.dockethub.com/rmpushnotification/api/v3/user/<USER-ID>/trackedmailpieces/<MAILPIECE-ID>`
-
-***Headers***:
-- `accessToken`: `(using session access_token)`
-
-***Body***:
 ```json
 {
-   "ProductName": "Royal Mail Tracked 24"
+  "httpCode": "401",
+  "httpMessage": "Unauthorized",
+  "moreInformation": "Client id not registered."
 }
 ```
 
-**3. Tracking Alias**
-
-Only continue with this request if `Push Notification` returns a `201` response.
-
-***Request***
-
-****GET****: `https://api.royalmail.net/trackingalias`
-
-***Headers***:
-- `Bearer Token`: `(using session access_token)`
-- `x-ibm-client-id`: `e83f49c439b0ebc0b130692bcb8b1cde`
-- `origin`: `consumermobile.royalmail.com`
-- `userId`: `12345678`
-- `mailPieceId`: `AA123456789US`
-
-***Response***:
 ```json
 {
-   "results": [
-       {
-           "userId": "12345678",
-           "lastUpdateDateTime": 1723899365325,
-           "mailPieceId": "AA123456789US"
-       }
-   ]
+  "errors": [
+    {
+      "errorCode": "<CODE>",
+      "errorDescription": "<DESCRIPTION>",
+      "errorCause": "<CAUSE>"
+    }
+  ]
 }
 ```
 
-### Removing a Mailpiece
+How the integration reacts:
 
-In order to remove a mail piece and have it disconnected from the account, the following 2 endpoints need to be requested in sequential order. Once this process is successful, the old mail piece should no longer be in the `mpDetails` array within the Mailpieces response.
+| Response | Meaning | Reaction |
+| --- | --- | --- |
+| 401 or 403 mentioning `client id` or `not registered to plan` | The client ID changed | Fetch the config again and retry once |
+| 401 or 403 mentioning a captcha or API session | A captcha is needed | Report it |
+| Other 401 | The JWT expired | Get a new JWT and retry once |
+| 429 | Too many requests | Wait for the next update |
 
-**1. Push Notification**
+## Event codes
 
-***Request***
+Not a complete list. The integration maps the latest event's code to a sensor state:
 
-****DELETE****: `https://rmappgateway.dockethub.com/rmpushnotification/api/v3/user/<USER-ID>/trackedmailpieces/<MAILPIECE-ID>`
+| Code | Royal Mail's text | Sensor state |
+| --- | --- | --- |
+| EVAIE, EVAIP | Sender preparing/despatching item | `in_transit` |
+| EVPPA | Accepted at Parcelshop | `in_transit` |
+| EVOCO | We've received your item and it's now being processed for delivery | `in_transit` |
+| EVDAV, EVIMC, EVDAC, EVBAV, EVIAV | Item received | `in_transit` |
+| EVOAC | Item received at | `in_transit` |
+| EVORI | Arrived at | `in_transit` |
+| EVODO | Item despatched to delivery office or mail centre | `in_transit` |
+| RSRXS, RORXS | Delivery request received | `in_transit` |
+| EVNRT | Item retention | `in_transit` |
+| EVKNA | Delivery attempted, no answer | `in_transit` |
+| EVKNR | Delivery attempted | `in_transit` |
+| EVNSR | Item prepared for redelivery | `in_transit` |
+| EVNDA | Available for redelivery or collection | `in_transit` |
+| EVGPD | Due to be delivered today | `out_for_delivery` |
+| EVKLS | Delivered to your collection point | `ready_for_collection` |
+| EVPLA | Available for collection | `ready_for_collection` |
+| EVKOP | Delivered by | `delivered` |
+| EVKSF | Delivered to safeplace | `delivered` |
+| EVKSP | Delivered and signed | `delivered` |
+| EVPLC | Collected | `collected` |
+| EVPLF | Not recorded | `collected` |
 
-***Headers***:
-- `accessToken`: `(using session access_token)`
+For a code that isn't listed, the integration falls back to the summary's `statusCategory`: `Delivered` becomes `delivered`, `Collected` becomes `collected`, and anything else `in_transit`.
 
-***Body***:
-```json
-{
-   "ProductName": "Royal Mail Tracked 24"
-}
-```
+## The app API
 
-**2. Delete Mailpiece**
-
-Only continue with this request if `Push Notification` returns a `201` response.
-
-***Request***
-
-****DELETE****: `https://api.royalmail.net/mailpieces/v3.1/user/<USER-ID>/history/e83f49c439b0ebc0b130692bcb8b1cde?mailPieceId=<MAILPIECE-ID>`
-
-***Headers***:
-- `Bearer Token`: `(using session access_token)`
-- `x-ibm-client-id`: `e83f49c439b0ebc0b130692bcb8b1cde`
-- `origin`: `consumermobile.royalmail.com`
-
-***Response***:
-```json
-{
-   "mpDetails": [
-       {
-           "lastAccessedTimestamp": 1723809720543,
-           "mailPieceId": "AA123456789US"
-       },
-       {
-           "lastAccessedTimestamp": 1723809109772,
-           "mailPieceId": "AA123456789US"
-       },
-       {
-           "lastAccessedTimestamp": 1723805773009,
-           "mailPieceId": "AA123456789US"
-       },
-       {
-           "lastAccessedTimestamp": 1686773055097,
-           "mailPieceId": "AA123456789US"
-       }
-   ],
-   "jwt": "****************************"
-}
-```
-
-## Get Image
-
-**Request**
-
-****GET****: `https://api.royalmail.net<IMAGE-URL>`
-
-***Headers***:
-- `Authorization`: `Bearer (session access_token)`
-- `x-ibm-client-id`: `e83f49c439b0ebc0b130692bcb8b1cde`
-- `origin`: `consumermobile.royalmail.com`
+Earlier versions of the integration used the Royal Mail app's API on `api.royalmail.net`. Its sign-in now sits behind Akamai's mobile bot protection, which only the official app passes, and the client ID the integration used no longer works. The notes on it are in this file's git history.
