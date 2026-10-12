@@ -11,11 +11,10 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntryState, ConfigFlowResult
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
-    CONF_ACCESS_TOKEN,
     CONF_GUID,
     CONF_PASSWORD,
     CONF_RESULTS,
@@ -49,8 +48,11 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     await coordinator.async_refresh()
 
-    if coordinator.last_exception is not None and data is not None:
+    if isinstance(coordinator.last_exception, ConfigEntryAuthFailed):
         raise InvalidAuth
+    if coordinator.last_exception is not None:
+        _LOGGER.error("Unable to log in to Royal Mail: %s", coordinator.last_exception)
+        raise CannotConnect
 
     return {"title": str(data[CONF_USERNAME])}
 
@@ -176,48 +178,45 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_abort(reason="no_import_data")
 
     async def async_step_reauth(
-        self, user_input: Mapping[str, Any]
+        self, entry_data: Mapping[str, Any]
     ) -> ConfigFlowResult:
-        """Handle reauth step."""
-
-        session = async_get_clientsession(self.hass)
-        coordinator = RoyalMailTokensCoordinator(self.hass, session, user_input)
-
-        await coordinator.async_refresh()
-        if coordinator.last_exception is not None and user_input is not None:
-            raise InvalidAuth
-
-        existing_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
-        )
-        user_input[CONF_ACCESS_TOKEN] = coordinator.data[CONF_ACCESS_TOKEN]
-
-        # Update specific data in the entry
-        updated_data = existing_entry.data.copy()
-        # Merge the import_data into the entry_data
-        updated_data.update(user_input)
-        # Update the entry with the new data
-        self.hass.config_entries.async_update_entry(existing_entry, data=updated_data)
-        # Ensure that the config entry is fully set up before attempting a reload
-        if existing_entry.state == ConfigEntryState.LOADED:
-            await self.hass.config_entries.async_reload(existing_entry.entry_id)
-
+        """Handle reauth when the stored credentials stop working."""
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the re-auth step."""
-        if user_input is not None:
-            # Here you would handle any form submission from the user
-            return self.async_create_entry(
-                title="Re-authenticated", data=self.context["data"]
-            )
+        """Ask for the password again and validate it."""
+        existing_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
+        errors: dict[str, str] = {}
 
-        # Show a confirmation form or return directly depending on your flow
+        if user_input is not None:
+            credentials = {
+                CONF_USERNAME: existing_entry.data[CONF_USERNAME],
+                CONF_PASSWORD: user_input[CONF_PASSWORD],
+            }
+            try:
+                await validate_input(self.hass, credentials)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            else:
+                return self.async_update_reload_and_abort(
+                    existing_entry,
+                    data={**existing_entry.data, **credentials},
+                    reason="reauth_successful",
+                )
+
         return self.async_show_form(
             step_id="reauth_confirm",
-            errors=None,
+            data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
+            description_placeholders={
+                CONF_USERNAME: existing_entry.data[CONF_USERNAME]
+            },
+            errors=errors,
         )
 
 
