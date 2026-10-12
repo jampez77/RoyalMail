@@ -45,7 +45,9 @@ Copy `custom_components/royalmail` into the `custom_components` folder of your H
 | Email | The email address you sign in to royalmail.com with. |
 | Password | Your royalmail.com password. |
 
-Home Assistant signs in once to check the details before it saves them. You can add one Royal Mail account.
+Home Assistant signs in once to check the details before it saves them.
+
+To add another Royal Mail account, add the integration again with that account's email address. Each account gets its own device and sensors. Home Assistant recognises an account by its Royal Mail account number, so it won't add the same account twice, even under a different email address.
 
 If Royal Mail later stops accepting the password, for example because you changed it, Home Assistant asks you to re-authenticate. Enter the new password there; nothing else needs setting up again.
 
@@ -63,11 +65,13 @@ It never removes anything from your Royal Mail account on its own. An item keeps
 
 ## Entities
 
-Everything belongs to a **Royal Mail** device of type *service*.
+Each account has a device of type *service*, named after its Royal Mail account number, for example `123456789`. Entity IDs and sensor names start with it, so two accounts can each track an item called "iPad" without their sensors clashing. The account number isn't a password, but bear in mind that it shows up in entity IDs.
+
+To give the device a friendlier name, open it under **Settings** > **Devices & services** > **Royal Mail** and rename it. Home Assistant offers to rename the entity IDs to match.
 
 ### Tracked parcels
 
-`sensor.royal_mail_tracked_parcels` counts the items in the account's tracked items. If you upgraded from 2024.x it keeps its old ID, `sensor.royalmail_tracked_parcels`.
+`sensor.123456789_tracked_parcels` counts the items in the account's tracked items. If you upgraded from an earlier version it keeps its old ID, such as `sensor.royalmail_tracked_parcels`.
 
 | Attribute | Description |
 | --- | --- |
@@ -77,7 +81,7 @@ Everything belongs to a **Royal Mail** device of type *service*.
 
 ### One sensor per item
 
-Each item gets a sensor named after the alias you gave it on royalmail.com or in the app, or after its tracking number if it has no alias. For example, an item called "Kettle" becomes `sensor.royal_mail_kettle`. Renaming the alias renames the sensor's friendly name; the entity ID stays the same.
+Each item gets a sensor named after the alias you gave it on royalmail.com or in the app, or after its tracking number if it has no alias. For example, an item called "Kettle" becomes `sensor.123456789_kettle`. Renaming the alias renames the sensor's friendly name; the entity ID stays the same.
 
 The state is one of:
 
@@ -110,11 +114,21 @@ Looks an item up while signed in, which adds it to the account's tracked items, 
 
 | Field | Required | Description |
 | --- | --- | --- |
+| `config_entry_id` | With several accounts | The account to add the item to. In the UI, pick it from the list. |
 | `reference_number` | Yes | The tracking reference. Spaces and lower case are fine. |
 
 ```yaml
 action: royalmail.track_your_item
 data:
+  reference_number: AB123456789GB
+```
+
+With several accounts, say which one. In YAML, a template can find the account from any of its sensors:
+
+```yaml
+action: royalmail.track_your_item
+data:
+  config_entry_id: "{{ config_entry_id('sensor.123456789_tracked_parcels') }}"
   reference_number: AB123456789GB
 ```
 
@@ -124,6 +138,7 @@ Removes an item from the account's tracked items, on royalmail.com and in the ap
 
 | Field | Required | Description |
 | --- | --- | --- |
+| `config_entry_id` | No | The account to remove the item from. Without it, the item is removed from whichever account tracks it. If more than one does, the action refuses and asks you to choose. |
 | `reference_number` | Yes | The tracking reference of an item the account is tracking. |
 
 ```yaml
@@ -143,7 +158,8 @@ automation:
   - alias: "Royal Mail: out for delivery"
     triggers:
       - trigger: state
-        entity_id: sensor.royal_mail_tracked_parcels
+        # With several accounts, list each account's tracked parcels sensor.
+        entity_id: sensor.123456789_tracked_parcels
         attribute: out_for_delivery
     conditions:
       # Only when an item joined the list, not when one left it.
@@ -162,7 +178,7 @@ automation:
 
 ### Clear out delivered items every night
 
-The integration no longer removes delivered items for you. This automation does it at 3am instead.
+The integration no longer removes delivered items for you. This automation does it at 3am instead, for every account.
 
 ```yaml
 automation:
@@ -174,12 +190,12 @@ automation:
       - repeat:
           for_each: >
             {{ integration_entities('royalmail')
-               | select('is_state', ['delivered', 'collected'])
-               | map('state_attr', 'tracking_number') | list }}
+               | select('is_state', ['delivered', 'collected']) | list }}
           sequence:
             - action: royalmail.stop_tracking_item
               data:
-                reference_number: "{{ repeat.item }}"
+                config_entry_id: "{{ config_entry_id(repeat.item) }}"
+                reference_number: "{{ state_attr(repeat.item, 'tracking_number') }}"
 ```
 
 ### List items on a dashboard
@@ -198,10 +214,9 @@ content: >
 ## Known limitations
 
 - **This isn't an official API.** It talks to the same endpoints as royalmail.com and can break when Royal Mail changes the website.
-- **Sign-ins are rate limited.** Royal Mail refuses sign-ins for a while after a few in quick succession. The integration keeps its session to avoid signing in, and backs off when refused, but setting the integration up, re-authenticating and restarting repeatedly can still trip it.
+- **Sign-ins are rate limited.** Royal Mail refuses sign-ins for a while after a few in quick succession. The integration keeps its session to avoid signing in, and backs off when refused, but setting the integration up, re-authenticating and restarting repeatedly can still trip it. With several accounts, it signs them in one at a time, a minute apart, so after a restart with expired sessions the last account can take a few minutes to come back.
 - **Actions may need a captcha.** royalmail.com sometimes asks for a captcha before it tracks or removes an item. Home Assistant can't solve one, so the action fails and says so. Track or remove the item on royalmail.com or in the app instead; the sensor follows within 15 minutes.
 - **Only the account's tracked items appear.** Items addressed to you that nobody tracked with your account don't show up.
-- **One account.** You can only add one Royal Mail account.
 - **Fixed polling interval.** Updates happen every 15 minutes. To update sooner, call `homeassistant.update_entity` on any Royal Mail sensor.
 - **It doesn't use Home Assistant's shared web session.** royalmail.com sits behind a bot filter that only lets browsers through, so the integration uses [curl_cffi](https://github.com/lexiforest/curl_cffi) to connect the way Chrome does.
 
@@ -214,6 +229,10 @@ Royal Mail blocks sign-ins after several attempts. Wait at least 30 minutes befo
 **"Invalid authentication"**
 
 Check you can sign in at [royalmail.com](https://www.royalmail.com/login) with the same email address and password. If you can, wait half an hour and try again, in case Royal Mail was refusing sign-ins.
+
+**"This Royal Mail account is already set up as …"**
+
+Two entries sign in to the same Royal Mail account, for example under an old and a new email address. Delete the one you no longer use.
 
 **An item is missing**
 
@@ -237,12 +256,12 @@ logger:
     custom_components.royalmail: debug
 ```
 
-To download diagnostics, go to **Settings** > **Devices & services** > **Royal Mail**, open the ⋮ menu and select **Download diagnostics**.
+To download diagnostics, go to **Settings** > **Devices & services** > **Royal Mail**, open the ⋮ menu next to the account and select **Download diagnostics**.
 
 ## Removing the integration
 
 1. Go to **Settings** > **Devices & services** and select **Royal Mail**.
-2. Open the ⋮ menu next to the account and select **Delete**.
+2. Open the ⋮ menu next to the account and select **Delete**. Repeat for each account.
 3. If you installed it with HACS, remove it in HACS too and restart Home Assistant.
 
 Removing the integration doesn't change anything in your Royal Mail account.
@@ -255,8 +274,10 @@ Version 2026.10.0 replaced the Royal Mail app API, which had stopped accepting s
 - **Parcel states are fixed values** such as `in_transit` or `delivered`, not Royal Mail's event text. The text is in the `last_event` attribute. Update automations that compare the state with text like `Delivered by`.
 - **Parcel attributes changed.** The long list of raw API fields, such as `summary_productName` and `events`, is replaced by the attributes listed under [Entities](#entities).
 - **`available_for_collection` is now `ready_for_collection`** on the tracked parcels sensor.
-- **New items get new-style entity IDs** based on the alias, such as `sensor.royal_mail_kettle`, instead of `sensor.royalmail_parcel_ab123456789gb`. Existing entities keep theirs.
-- **The device is called Royal Mail**, unless you renamed it, and sensor names start with it, for example *Royal Mail Kettle*.
+- **Accounts are recognised by their Royal Mail account number** instead of the email address. Home Assistant switches over the first time the integration starts, keeping the entity IDs, the device and anything you set on them, such as its area.
+- **New items get new-style entity IDs** based on the account number and alias, such as `sensor.123456789_kettle`, instead of `sensor.royalmail_parcel_ab123456789gb`. Existing entities keep theirs.
+- **The device is named after the account number**, unless you renamed it, and sensor names start with it, for example *123456789 Kettle*. Rename the device to change both.
+- **You can add more than one account.**
 - **Delivered items aren't removed automatically any more.** Before, the integration deleted items from your account 24 hours after delivery. See [Clear out delivered items every night](#clear-out-delivered-items-every-night) to keep that behaviour.
 - **Actions raise errors** when they fail, instead of returning an error message.
 
@@ -267,7 +288,7 @@ The integration follows Home Assistant's [integration quality scale](https://dev
 | Rule | Why it doesn't apply |
 | --- | --- |
 | Discovery, discovery update info | Royal Mail is a cloud service; there's nothing on the network to discover. |
-| Reconfiguration flow | The email address identifies the account, and re-authentication covers a new password. |
+| Reconfiguration flow | Only the sign-in details can change, and those belong in re-authentication. |
 | Entity category, entities disabled by default | Every entity is a primary entity. |
 | Repair issues | Nothing can go wrong that the user can fix from a repair. Sign-in problems use re-authentication. |
 | Inject web session | Home Assistant's shared HTTP session can't connect the way Chrome does, which royalmail.com requires. |

@@ -114,7 +114,7 @@ The JWT is valid for about two hours. Its payload carries:
 
 | Claim | Meaning |
 | --- | --- |
-| `sub` | The account's user ID, used in history URLs. |
+| `sub` | The account's user ID, used in history URLs. It stays the same if the account's email address changes, so the integration uses it as the account number that identifies a config entry and names its device. |
 | `exp` | Expiry, in Unix seconds. |
 
 A non-200 response, or a body without `jwt_token`, means the session has expired: sign in again.
