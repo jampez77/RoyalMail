@@ -1,0 +1,363 @@
+# serializer version: 1
+# name: test_sensors[sensor.royal_mail_1b0000000000000000001-entry]
+  EntityRegistryEntrySnapshot({
+    'aliases': list([
+      None,
+    ]),
+    'area_id': None,
+    'capabilities': dict({
+      <SensorEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'in_transit',
+        'out_for_delivery',
+        'ready_for_collection',
+        'delivered',
+        'collected',
+      ]),
+    }),
+    'config_entry_id': <ANY>,
+    'config_subentry_id': <ANY>,
+    'device_class': None,
+    'device_id': <ANY>,
+    'disabled_by': None,
+    'domain': 'sensor',
+    'entity_category': None,
+    'entity_id': 'sensor.royal_mail_1b0000000000000000001',
+    'has_entity_name': True,
+    'hidden_by': None,
+    'icon': None,
+    'id': <ANY>,
+    'labels': set({
+    }),
+    'name': None,
+    'object_id_base': '1B0000000000000000001',
+    'options': dict({
+    }),
+    'original_device_class': <SensorDeviceClass.ENUM: 'enum'>,
+    'original_icon': None,
+    'original_name': '1B0000000000000000001',
+    'platform': 'royalmail',
+    'previous_unique_id': None,
+    'suggested_object_id': None,
+    'supported_features': 0,
+    'translation_key': 'parcel',
+    'unique_id': 'royalmail-user@example.com-1b0000000000000000001',
+    'unit_of_measurement': None,
+  })
+# ---
+# name: test_sensors[sensor.royal_mail_1b0000000000000000001-state]
+  StateSnapshot({
+    'attributes': ReadOnlyDict({
+      'alias': None,
+      'carrier': None,
+      <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Royal Mail 1B0000000000000000001',
+      'last_event': 'Out for delivery',
+      'last_event_location': None,
+      'last_event_time': datetime.datetime(2026, 10, 12, 9, 30, tzinfo=datetime.timezone.utc),
+      <SensorEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'in_transit',
+        'out_for_delivery',
+        'ready_for_collection',
+        'delivered',
+        'collected',
+      ]),
+      'product': 'Tracked 48',
+      'status_description': None,
+      'summary_line': None,
+      'tracking_number': '1B0000000000000000001',
+    }),
+    'context': <ANY>,
+    'entity_id': 'sensor.royal_mail_1b0000000000000000001',
+    'last_changed': <ANY>,
+    'last_reported': <ANY>,
+    'last_updated': <ANY>,
+    'state': 'out_for_delivery',
+  })
+# ---
+# name: test_sensors[sensor.royal_mail_kettle-entry]
+  EntityRegistryEntrySnapshot({
+    'aliases': list([
+      None,
+    ]),
+    'area_id': None,
+    'capabilities': dict({
+      <SensorEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'in_transit',
+        'out_for_delivery',
+        'ready_for_collection',
+        'delivered',
+        'collected',
+      ]),
+    }),
+    'config_entry_id': <ANY>,
+    'config_subentry_id': <ANY>,
+    'device_class': None,
+    'device_id': <ANY>,
+    'disabled_by': None,
+    'domain': 'sensor',
+    'entity_category': None,
+    'entity_id': 'sensor.royal_mail_kettle',
+    'has_entity_name': True,
+    'hidden_by': None,
+    'icon': None,
+    'id': <ANY>,
+    'labels': set({
+    }),
+    'name': None,
+    'object_id_base': 'Kettle',
+    'options': dict({
+    }),
+    'original_device_class': <SensorDeviceClass.ENUM: 'enum'>,
+    'original_icon': None,
+    'original_name': 'Kettle',
+    'platform': 'royalmail',
+    'previous_unique_id': None,
+    'suggested_object_id': None,
+    'supported_features': 0,
+    'translation_key': 'parcel',
+    'unique_id': 'royalmail-user@example.com-ab123456789gb',
+    'unit_of_measurement': None,
+  })
+# ---
+# name: test_sensors[sensor.royal_mail_kettle-state]
+  StateSnapshot({
+    'attributes': ReadOnlyDict({
+      'alias': 'Kettle',
+      'carrier': 'Royal Mail',
+      <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Royal Mail Kettle',
+      'last_event': 'Delivered',
+      'last_event_location': 'Example Delivery Office',
+      'last_event_time': datetime.datetime(2026, 10, 12, 9, 30, tzinfo=datetime.timezone.utc),
+      <SensorEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'in_transit',
+        'out_for_delivery',
+        'ready_for_collection',
+        'delivered',
+        'collected',
+      ]),
+      'product': 'Tracked 24',
+      'status_description': 'Your item was delivered',
+      'summary_line': 'We delivered your item',
+      'tracking_number': 'AB123456789GB',
+    }),
+    'context': <ANY>,
+    'entity_id': 'sensor.royal_mail_kettle',
+    'last_changed': <ANY>,
+    'last_reported': <ANY>,
+    'last_updated': <ANY>,
+    'state': 'delivered',
+  })
+# ---
+# name: test_sensors[sensor.royal_mail_shoes-entry]
+  EntityRegistryEntrySnapshot({
+    'aliases': list([
+      None,
+    ]),
+    'area_id': None,
+    'capabilities': dict({
+      <SensorEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'in_transit',
+        'out_for_delivery',
+        'ready_for_collection',
+        'delivered',
+        'collected',
+      ]),
+    }),
+    'config_entry_id': <ANY>,
+    'config_subentry_id': <ANY>,
+    'device_class': None,
+    'device_id': <ANY>,
+    'disabled_by': None,
+    'domain': 'sensor',
+    'entity_category': None,
+    'entity_id': 'sensor.royal_mail_shoes',
+    'has_entity_name': True,
+    'hidden_by': None,
+    'icon': None,
+    'id': <ANY>,
+    'labels': set({
+    }),
+    'name': None,
+    'object_id_base': 'Shoes',
+    'options': dict({
+    }),
+    'original_device_class': <SensorDeviceClass.ENUM: 'enum'>,
+    'original_icon': None,
+    'original_name': 'Shoes',
+    'platform': 'royalmail',
+    'previous_unique_id': None,
+    'suggested_object_id': None,
+    'supported_features': 0,
+    'translation_key': 'parcel',
+    'unique_id': 'royalmail-user@example.com-cd987654321gb',
+    'unit_of_measurement': None,
+  })
+# ---
+# name: test_sensors[sensor.royal_mail_shoes-state]
+  StateSnapshot({
+    'attributes': ReadOnlyDict({
+      'alias': 'Shoes',
+      'carrier': None,
+      <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Royal Mail Shoes',
+      'last_event': 'Delivered to Your Collection Point',
+      'last_event_location': None,
+      'last_event_time': datetime.datetime(2026, 10, 12, 9, 30, tzinfo=datetime.timezone.utc),
+      <SensorEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'in_transit',
+        'out_for_delivery',
+        'ready_for_collection',
+        'delivered',
+        'collected',
+      ]),
+      'product': None,
+      'status_description': None,
+      'summary_line': None,
+      'tracking_number': 'CD987654321GB',
+    }),
+    'context': <ANY>,
+    'entity_id': 'sensor.royal_mail_shoes',
+    'last_changed': <ANY>,
+    'last_reported': <ANY>,
+    'last_updated': <ANY>,
+    'state': 'ready_for_collection',
+  })
+# ---
+# name: test_sensors[sensor.royal_mail_tracked_parcels-entry]
+  EntityRegistryEntrySnapshot({
+    'aliases': list([
+      None,
+    ]),
+    'area_id': None,
+    'capabilities': None,
+    'config_entry_id': <ANY>,
+    'config_subentry_id': <ANY>,
+    'device_class': None,
+    'device_id': <ANY>,
+    'disabled_by': None,
+    'domain': 'sensor',
+    'entity_category': None,
+    'entity_id': 'sensor.royal_mail_tracked_parcels',
+    'has_entity_name': True,
+    'hidden_by': None,
+    'icon': None,
+    'id': <ANY>,
+    'labels': set({
+    }),
+    'name': None,
+    'object_id_base': 'Tracked parcels',
+    'options': dict({
+    }),
+    'original_device_class': None,
+    'original_icon': None,
+    'original_name': 'Tracked parcels',
+    'platform': 'royalmail',
+    'previous_unique_id': None,
+    'suggested_object_id': None,
+    'supported_features': 0,
+    'translation_key': 'tracked_parcels',
+    'unique_id': 'royalmail-user@example.com-tracked_parcels',
+    'unit_of_measurement': None,
+  })
+# ---
+# name: test_sensors[sensor.royal_mail_tracked_parcels-state]
+  StateSnapshot({
+    'attributes': ReadOnlyDict({
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Royal Mail Tracked parcels',
+      'out_for_delivery': list([
+        '1B0000000000000000001',
+      ]),
+      'parcels': list([
+        'AB123456789GB',
+        '1B0000000000000000001',
+        'CD987654321GB',
+        'EF111111111GB',
+      ]),
+      'ready_for_collection': list([
+        'CD987654321GB',
+      ]),
+    }),
+    'context': <ANY>,
+    'entity_id': 'sensor.royal_mail_tracked_parcels',
+    'last_changed': <ANY>,
+    'last_reported': <ANY>,
+    'last_updated': <ANY>,
+    'state': '4',
+  })
+# ---
+# name: test_sensors[sensor.royal_mail_unknown_item-entry]
+  EntityRegistryEntrySnapshot({
+    'aliases': list([
+      None,
+    ]),
+    'area_id': None,
+    'capabilities': dict({
+      <SensorEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'in_transit',
+        'out_for_delivery',
+        'ready_for_collection',
+        'delivered',
+        'collected',
+      ]),
+    }),
+    'config_entry_id': <ANY>,
+    'config_subentry_id': <ANY>,
+    'device_class': None,
+    'device_id': <ANY>,
+    'disabled_by': None,
+    'domain': 'sensor',
+    'entity_category': None,
+    'entity_id': 'sensor.royal_mail_unknown_item',
+    'has_entity_name': True,
+    'hidden_by': None,
+    'icon': None,
+    'id': <ANY>,
+    'labels': set({
+    }),
+    'name': None,
+    'object_id_base': 'Unknown item',
+    'options': dict({
+    }),
+    'original_device_class': <SensorDeviceClass.ENUM: 'enum'>,
+    'original_icon': None,
+    'original_name': 'Unknown item',
+    'platform': 'royalmail',
+    'previous_unique_id': None,
+    'suggested_object_id': None,
+    'supported_features': 0,
+    'translation_key': 'parcel',
+    'unique_id': 'royalmail-user@example.com-ef111111111gb',
+    'unit_of_measurement': None,
+  })
+# ---
+# name: test_sensors[sensor.royal_mail_unknown_item-state]
+  StateSnapshot({
+    'attributes': ReadOnlyDict({
+      'alias': 'Unknown item',
+      'carrier': None,
+      <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Royal Mail Unknown item',
+      'last_event': None,
+      'last_event_location': None,
+      'last_event_time': None,
+      <SensorEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'in_transit',
+        'out_for_delivery',
+        'ready_for_collection',
+        'delivered',
+        'collected',
+      ]),
+      'product': None,
+      'status_description': None,
+      'summary_line': None,
+      'tracking_number': 'EF111111111GB',
+    }),
+    'context': <ANY>,
+    'entity_id': 'sensor.royal_mail_unknown_item',
+    'last_changed': <ANY>,
+    'last_reported': <ANY>,
+    'last_updated': <ANY>,
+    'state': 'unknown',
+  })
+# ---
