@@ -99,12 +99,20 @@ The state is one of:
 | `tracking_number` | The Royal Mail reference, for example `AB123456789GB`. |
 | `alias` | The name you gave the item, if any. |
 | `product` | The service, for example *Royal Mail Tracked 48*. |
+| `product_description` | What the service promises, for example *Aims to deliver within 2-3 days with online tracking*. |
+| `carrier` | The carrier, usually Royal Mail Group Ltd. |
+| `sender` | Who sent the item, when the sender told Royal Mail about it in advance. Usually empty. |
+| `origin_country` | The country the item was sent from. |
+| `destination_country` | The country it's going to. Royal Mail doesn't always say. |
 | `last_event` | Royal Mail's description of the latest event, for example *Delivered by*. |
+| `last_event_code` | Royal Mail's code for the latest event, for example `EVKOP`. See [Event codes](api.md#event-codes). |
 | `last_event_time` | When the latest event happened. |
 | `last_event_location` | Where it happened, for example a delivery office. |
+| `status_category` | Royal Mail's progress step, as on the track page: one of *We're expecting it*, *We've got it*, *Left Origin Country*, *In Customs*, *Released from Customs*, *Left the UK*, *In Transit*, *Ready for Delivery*, *Delivery Attempted*, *Pending*, *Returned to Sender*, *Delivered*, *Collected*, *Duplicate Identified*, *Restricted or Prohibited Contents* or *No Status*. Finer-grained than the state, for example for a failed delivery or an item held in customs. |
 | `status_description` | Royal Mail's short status. |
 | `summary_line` | Royal Mail's one-line summary. |
-| `carrier` | The carrier, usually Royal Mail Group Ltd. |
+| `co2e_grams` | Royal Mail's estimate of the item's carbon footprint, in grams of CO2e. Empty until Royal Mail has worked it out. |
+| `tracking_url` | The item's page on royalmail.com, handy for notifications. |
 
 ## Actions
 

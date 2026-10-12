@@ -174,14 +174,40 @@ Returns the account's tracked items: the list royalmail.com shows as *Recently t
       "carrierShortName": "RM",
       "carrierFullName": "Royal Mail Group Ltd",
       "summary": {
+        "uniqueItemId": "<ID>",
+        "oneDBarcode": "AB123456789GB",
+        "productId": "TO4",
         "productName": "Royal Mail Tracked 48",
+        "productDescription": "Aims to deliver within 2-3 days with online tracking",
+        "productCategory": "NON-INTERNATIONAL",
+        "originCountryCode": "GB",
+        "originCountryName": "United Kingdom",
+        "destinationCountryCode": "GB",
+        "destinationCountryName": "United Kingdom",
         "lastEventCode": "EVKOP",
         "lastEventName": "Delivered by",
         "lastEventDateTime": "2026-10-12T10:30:00+01:00",
         "lastEventLocationName": "Example Delivery Office",
         "statusCategory": "Delivered",
         "statusDescription": "Delivered",
-        "summaryLine": "Your item was delivered on 12-10-2026."
+        "statusHelpText": " ",
+        "summaryLine": "Your item was delivered on 12-10-2026.",
+        "detailedStatusCategory": "Delivered"
+      },
+      "greenCredentials": {
+        "totalCO2e": 205,
+        "dataAccuracy": "Average"
+      },
+      "preadvice": {
+        "senderName": null,
+        "senderLogo": null
+      },
+      "links": {
+        "events": {
+          "href": "/mailpieces/v3/AB123456789GB/events",
+          "title": "Events",
+          "description": "Get events"
+        }
       }
     }
   ]
@@ -189,6 +215,14 @@ Returns the account's tracked items: the list royalmail.com shows as *Recently t
 ```
 
 Only use `summary` when the item's `status` is `"200"`; otherwise Royal Mail has no tracking for it yet. Text fields can contain `**bold**` markers, which the website renders and the integration strips.
+
+Fields can be missing: `destinationCountry*` isn't always sent, and `greenCredentials` has no `totalCO2e` while `dataAccuracy` is `Calculating`. `totalCO2e` is in grams of CO2e. `dataAccuracy: Average` seems to mean the figure is an average for the service rather than one worked out for the item. `preadvice` names the sender only when the sender told Royal Mail about the item in advance.
+
+`statusCategory` is one of the progress steps the track page has an icon for: `We're expecting it`, `We've got it`, `Left Origin Country`, `In Customs`, `Released from Customs`, `Left the UK`, `In Transit`, `Ready for Delivery`, `Delivery Attempted`, `Pending`, `Returned to Sender`, `Delivered`, `Collected`, `Duplicate Identified`, `Restricted or Prohibited Contents` and `No Status` (from `appText.trackingInformation.statusCategoryIcon` in the runtime config).
+
+The integration reads the product, countries, latest event, status, summary line, carrier, sender and carbon footprint. It ignores the IDs, `statusHelpText` and `detailedStatusCategory` (so far the same as `statusCategory`).
+
+An item's page on royalmail.com is `https://www.royalmail.com/track-your-item#/tracking-results/<reference>`.
 
 A 400 or 401 response means the history `jwt` expired: fetch the history again and retry.
 
