@@ -297,7 +297,14 @@ Not a complete list. The integration maps the latest event's code to a sensor st
 | EVKNR | Delivery attempted | `in_transit` |
 | EVNSR | Item prepared for redelivery | `in_transit` |
 | EVNDA | Available for redelivery or collection | `in_transit` |
+| EVHAC | Item Received by Royal Mail (international) | `in_transit` |
+| EVHOE | Item Leaving the UK (international) | `in_transit` |
+| EVJIC | With Customs in destination country (international) | `in_transit` |
+| EVJOE | Item Received (international) | `in_transit` |
+| EVIIS | Item received at Sorting Office (international) | `in_transit` |
+| EVGID | Arrived at Delivery Office (international) | `in_transit` |
 | EVGPD | Due to be delivered today | `out_for_delivery` |
+| EVKPD | Due to be delivered today (international) | `out_for_delivery` |
 | EVKLS | Delivered to your collection point | `ready_for_collection` |
 | EVPLA | Available for collection | `ready_for_collection` |
 | EVKOP | Delivered by | `delivered` |

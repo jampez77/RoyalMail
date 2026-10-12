@@ -160,6 +160,8 @@ async def test_legacy_entities_pruned(
         (Parcel("A", last_event_code="EVKSP"), None),
         (Parcel("A", summary_ok=True), "in_transit"),
         (Parcel("A", last_event_code="evgpd", summary_ok=True), "out_for_delivery"),
+        (Parcel("A", last_event_code="EVKPD", summary_ok=True), "out_for_delivery"),
+        (Parcel("A", last_event_code="EVJIC", summary_ok=True), "in_transit"),
         (Parcel("A", last_event_code="EVPLA", summary_ok=True), "ready_for_collection"),
         (Parcel("A", last_event_code="EVPLC", summary_ok=True), "collected"),
         (Parcel("A", last_event_code="EVNDA", summary_ok=True), "in_transit"),
