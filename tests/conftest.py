@@ -88,6 +88,20 @@ def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
     """Load the integration from custom_components in every test."""
 
 
+@pytest.fixture(autouse=True)
+def block_royal_mail() -> Generator[None]:
+    """Fail any test that would talk to the real royalmail.com.
+
+    curl_cffi opens its own sockets in libcurl, which pytest-socket can't
+    block, so a client created without a fake session would go online.
+    """
+    with patch(
+        "custom_components.royalmail.api.AsyncSession",
+        side_effect=AssertionError("Tests must not talk to royalmail.com"),
+    ):
+        yield
+
+
 @pytest.fixture
 def mock_config_entry() -> MockConfigEntry:
     """Return a Royal Mail config entry."""
