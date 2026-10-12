@@ -20,6 +20,7 @@ TO_REDACT = {
     # Parcel details that identify the item or where it is going.
     "alias",
     "last_event_location",
+    "sender",
     "summary_line",
     "tracking_number",
 }

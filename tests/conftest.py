@@ -50,6 +50,7 @@ def make_parcels() -> dict[str, Parcel]:
             "AB123456789GB",
             alias="Kettle",
             product="Tracked 24",
+            product_description="Aims to deliver the next day",
             last_event="Delivered",
             last_event_code="EVKSP",
             last_event_time=when,
@@ -58,6 +59,10 @@ def make_parcels() -> dict[str, Parcel]:
             status_description="Your item was delivered",
             summary_line="We delivered your item",
             carrier="Royal Mail",
+            sender="Example Shop",
+            origin_country="United Kingdom",
+            destination_country="United Kingdom",
+            co2e_grams=205,
             summary_ok=True,
         ),
         Parcel(

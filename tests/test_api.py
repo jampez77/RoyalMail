@@ -83,6 +83,9 @@ SUMMARY: dict[str, Any] = {
             "carrierShortName": "RM",
             "summary": {
                 "productName": "Tracked 24",
+                "productDescription": "Aims to deliver the next day",
+                "originCountryName": "United Kingdom",
+                "destinationCountryName": "United Kingdom",
                 "lastEventName": "**Delivered**",
                 "lastEventCode": "EVKSP",
                 "lastEventDateTime": "2026-10-12T09:30:00+01:00",
@@ -91,6 +94,8 @@ SUMMARY: dict[str, Any] = {
                 "statusDescription": "We delivered your item",
                 "summaryLine": "Delivered on Monday",
             },
+            "greenCredentials": {"totalCO2e": 205, "dataAccuracy": "Average"},
+            "preadvice": {"senderName": "Example Shop", "senderLogo": None},
         },
         {
             "mailPieceId": "CD987654321GB",
@@ -352,6 +357,7 @@ async def test_sign_in_and_read_history(session: FakeSession, token: str) -> Non
             tracking_number="AB123456789GB",
             alias="Kettle",
             product="Tracked 24",
+            product_description="Aims to deliver the next day",
             last_event="Delivered",
             last_event_code="EVKSP",
             last_event_time=datetime(
@@ -362,6 +368,10 @@ async def test_sign_in_and_read_history(session: FakeSession, token: str) -> Non
             status_description="We delivered your item",
             summary_line="Delivered on Monday",
             carrier="RM",
+            sender="Example Shop",
+            origin_country="United Kingdom",
+            destination_country="United Kingdom",
+            co2e_grams=205,
             summary_ok=True,
         ),
         # Royal Mail had no summary for this one, so only the history is used.
@@ -929,8 +939,44 @@ async def test_close(session: FakeSession) -> None:
             {"status": "200", "summary": {"lastEventDateTime": 1760261400}},
             Parcel("AB1", summary_ok=True),
         ),
+        (
+            # The carbon footprint is still being worked out, and nobody
+            # told Royal Mail who sent the item.
+            {
+                "status": "200",
+                "summary": {},
+                "greenCredentials": {"dataAccuracy": "Calculating"},
+                "preadvice": {"senderName": None, "senderLogo": None},
+            },
+            Parcel("AB1", summary_ok=True),
+        ),
+        (
+            {
+                "status": "200",
+                "summary": {},
+                "greenCredentials": {"totalCO2e": "205"},
+                "preadvice": "odd",
+            },
+            Parcel("AB1", summary_ok=True),
+        ),
+        (
+            {"status": "200", "summary": {}, "greenCredentials": {"totalCO2e": True}},
+            Parcel("AB1", summary_ok=True),
+        ),
+        (
+            {"status": "200", "summary": {}, "greenCredentials": {"totalCO2e": 98.5}},
+            Parcel("AB1", co2e_grams=98.5, summary_ok=True),
+        ),
     ],
 )
 def test_parcel_from_api(item: dict[str, Any] | None, expected: Parcel) -> None:
     """Test odd summaries are handled the way the website handles them."""
     assert Parcel.from_api({"mailPieceId": "AB1", "alias": 5}, item) == expected
+
+
+def test_parcel_tracking_url() -> None:
+    """Test an item links to its page on royalmail.com."""
+    assert (
+        Parcel("AB123456789GB").tracking_url
+        == "https://www.royalmail.com/track-your-item#/tracking-results/AB123456789GB"
+    )

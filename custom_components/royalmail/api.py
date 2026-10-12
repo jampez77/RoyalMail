@@ -144,6 +144,7 @@ class Parcel:
     tracking_number: str
     alias: str | None = None
     product: str | None = None
+    product_description: str | None = None
     last_event: str | None = None
     last_event_code: str | None = None
     last_event_time: datetime | None = None
@@ -152,7 +153,16 @@ class Parcel:
     status_description: str | None = None
     summary_line: str | None = None
     carrier: str | None = None
+    sender: str | None = None
+    origin_country: str | None = None
+    destination_country: str | None = None
+    co2e_grams: float | None = None
     summary_ok: bool = False
+
+    @property
+    def tracking_url(self) -> str:
+        """Return the item's page on royalmail.com."""
+        return f"{TRACK_PAGE_URL}#/tracking-results/{self.tracking_number}"
 
     @classmethod
     def from_api(cls, detail: dict[str, Any], item: dict[str, Any] | None) -> Parcel:
@@ -168,6 +178,7 @@ class Parcel:
             tracking_number=tracking_number,
             alias=alias,
             product=_clean(summary.get("productName")),
+            product_description=_clean(summary.get("productDescription")),
             last_event=_clean(summary.get("lastEventName")),
             last_event_code=_clean(summary.get("lastEventCode")),
             last_event_time=_parse_time(summary.get("lastEventDateTime")),
@@ -176,6 +187,12 @@ class Parcel:
             status_description=_clean(summary.get("statusDescription")),
             summary_line=_clean(summary.get("summaryLine")),
             carrier=_clean(item.get("carrierFullName") or item.get("carrierShortName")),
+            # Only set when the sender told Royal Mail about the item in advance.
+            sender=_clean(_section(item, "preadvice").get("senderName")),
+            origin_country=_clean(summary.get("originCountryName")),
+            destination_country=_clean(summary.get("destinationCountryName")),
+            # Missing while Royal Mail is still working it out.
+            co2e_grams=_number(_section(item, "greenCredentials").get("totalCO2e")),
             summary_ok=True,
         )
 
@@ -654,6 +671,18 @@ def _clean(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     return value.replace("**", "").strip() or None
+
+
+def _section(item: dict[str, Any], key: str) -> dict[str, Any]:
+    """Return one of an item's nested objects, or an empty one."""
+    value = item.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return value
 
 
 def _parse_time(value: Any) -> datetime | None:

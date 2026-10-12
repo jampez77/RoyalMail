@@ -114,18 +114,26 @@ class RoyalMailParcelSensor(RoyalMailEntity, SensorEntity):
     @property
     @override
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return details of the latest tracking event."""
+        """Return details of the item and its latest tracking event."""
         parcel = self._parcel
         return {
             "tracking_number": parcel.tracking_number,
             "alias": parcel.alias,
             "product": parcel.product,
+            "product_description": parcel.product_description,
+            "carrier": parcel.carrier,
+            "sender": parcel.sender,
+            "origin_country": parcel.origin_country,
+            "destination_country": parcel.destination_country,
             "last_event": parcel.last_event,
+            "last_event_code": parcel.last_event_code,
             "last_event_time": parcel.last_event_time,
             "last_event_location": parcel.last_event_location,
+            "status_category": parcel.status_category,
             "status_description": parcel.status_description,
             "summary_line": parcel.summary_line,
-            "carrier": parcel.carrier,
+            "co2e_grams": parcel.co2e_grams,
+            "tracking_url": parcel.tracking_url,
         }
 
     @callback

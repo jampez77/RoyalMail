@@ -54,8 +54,26 @@
           "product": {
             "name": "Product"
           },
+          "product_description": {
+            "name": "Product description"
+          },
+          "carrier": {
+            "name": "Carrier"
+          },
+          "sender": {
+            "name": "Sender"
+          },
+          "origin_country": {
+            "name": "Origin country"
+          },
+          "destination_country": {
+            "name": "Destination country"
+          },
           "last_event": {
             "name": "Last event"
+          },
+          "last_event_code": {
+            "name": "Last event code"
           },
           "last_event_time": {
             "name": "Last event time"
@@ -63,14 +81,20 @@
           "last_event_location": {
             "name": "Last event location"
           },
+          "status_category": {
+            "name": "Status category"
+          },
           "status_description": {
             "name": "Status"
           },
           "summary_line": {
             "name": "Summary"
           },
-          "carrier": {
-            "name": "Carrier"
+          "co2e_grams": {
+            "name": "Carbon footprint (g CO2e)"
+          },
+          "tracking_url": {
+            "name": "Tracking page"
           }
         }
       },
