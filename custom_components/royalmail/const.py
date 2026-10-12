@@ -4,8 +4,15 @@ from datetime import timedelta
 import logging
 from typing import Final
 
+from homeassistant.util.hass_dict import HassKey
+
+from .api import LoginThrottle
+
 DOMAIN: Final = "royalmail"
 LOGGER = logging.getLogger(__package__)
+
+# Shared by every account, so their logins are spaced out.
+DATA_LOGIN_THROTTLE: Final[HassKey[LoginThrottle]] = HassKey(f"{DOMAIN}_login_throttle")
 
 CONF_SESSION: Final = "session"
 

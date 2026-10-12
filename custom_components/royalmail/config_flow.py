@@ -7,6 +7,7 @@ import probatio
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import (
     TextSelector,
     TextSelectorConfig,
@@ -15,6 +16,7 @@ from homeassistant.helpers.selector import (
 
 from .api import InvalidAuth, RateLimited, RoyalMailError, RoyalMailWebClient
 from .const import CONF_SESSION, DOMAIN, LOGGER
+from .coordinator import async_get_login_throttle
 
 PASSWORD_SELECTOR = TextSelector(
     TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="current-password")
@@ -33,10 +35,12 @@ STEP_REAUTH_SCHEMA = probatio.Schema(
 
 
 async def _async_sign_in(
-    username: str, password: str, errors: dict[str, str]
+    hass: HomeAssistant, username: str, password: str, errors: dict[str, str]
 ) -> dict[str, Any] | None:
     """Sign in to royalmail.com and return the session, or fill in errors."""
-    client = RoyalMailWebClient(username, password)
+    client = RoyalMailWebClient(
+        username, password, login_throttle=async_get_login_throttle(hass)
+    )
     try:
         await client.async_login()
         await client.async_ensure_token()
@@ -74,7 +78,7 @@ class RoyalMailConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             # Keep the session so setting up doesn't sign in a second time;
             # Royal Mail blocks logins that come in quick succession.
-            session = await _async_sign_in(username, password, errors)
+            session = await _async_sign_in(self.hass, username, password, errors)
             if session is not None:
                 return self.async_create_entry(
                     title=username,
@@ -108,7 +112,7 @@ class RoyalMailConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             password = user_input[CONF_PASSWORD]
-            session = await _async_sign_in(username, password, errors)
+            session = await _async_sign_in(self.hass, username, password, errors)
             if session is not None:
                 return self.async_update_reload_and_abort(
                     entry,

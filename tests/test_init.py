@@ -15,7 +15,7 @@ from custom_components.royalmail.api import (
     InvalidAuth,
     RateLimited,
 )
-from custom_components.royalmail.const import CONF_SESSION, DOMAIN
+from custom_components.royalmail.const import CONF_SESSION, DATA_LOGIN_THROTTLE, DOMAIN
 
 from .conftest import PASSWORD, SESSION, USERNAME
 
@@ -32,7 +32,9 @@ async def test_setup_and_unload(
     await hass.async_block_till_done()
 
     assert mock_config_entry.state is ConfigEntryState.LOADED
-    mock_client_class.assert_called_once_with(USERNAME, PASSWORD, SESSION)
+    mock_client_class.assert_called_once_with(
+        USERNAME, PASSWORD, SESSION, login_throttle=hass.data[DATA_LOGIN_THROTTLE]
+    )
     mock_client.async_get_parcels.assert_awaited_once()
 
     await hass.config_entries.async_unload(mock_config_entry.entry_id)
@@ -141,7 +143,9 @@ async def test_migrate_from_app_api(
         CONF_PASSWORD: PASSWORD,
         CONF_SESSION: mock_client.state,
     }
-    mock_client_class.assert_called_once_with(USERNAME, PASSWORD, None)
+    mock_client_class.assert_called_once_with(
+        USERNAME, PASSWORD, None, login_throttle=hass.data[DATA_LOGIN_THROTTLE]
+    )
 
 
 async def test_migrate_from_future_version(

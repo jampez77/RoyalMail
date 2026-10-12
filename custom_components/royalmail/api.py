@@ -11,7 +11,9 @@ This module has no Home Assistant imports so it can be published on its own.
 
 from __future__ import annotations
 
+import asyncio
 import base64
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from datetime import datetime
 import json
@@ -52,6 +54,8 @@ API_SESSION_FALLBACK_TTL = 110
 # refusal we wait before trying again, doubling the wait each time.
 LOGIN_BACKOFF = 30 * 60
 LOGIN_BACKOFF_MAX = 4 * 3600
+# Clients sharing a LoginThrottle log in one at a time, this far apart.
+LOGIN_SPACING = 60
 
 _FORM_BUILD_ID = re.compile(r'name="form_build_id"\s+value="([^"]+)"')
 _RATE_LIMIT_MARKERS = ("experiencing technical issues", "temporarily blocked")
@@ -176,6 +180,38 @@ class Parcel:
         )
 
 
+class LoginThrottle:
+    """Lets clients log in one at a time, a set number of seconds apart.
+
+    Clients for different accounts on the same internet connection should share
+    one, in case Royal Mail counts logins per address rather than per account.
+    """
+
+    def __init__(self, spacing: float = LOGIN_SPACING) -> None:
+        """Create a throttle that keeps logins `spacing` seconds apart."""
+        self._spacing = spacing
+        self._lock = asyncio.Lock()
+        self._last: float | None = None
+
+    async def __aenter__(self) -> None:
+        """Wait for the previous login to finish and the spacing to pass."""
+        await self._lock.acquire()
+        if self._last is None:
+            return
+        if (wait := self._last + self._spacing - time.monotonic()) > 0:
+            _LOGGER.debug("Waiting %.0fs before the next Royal Mail login", wait)
+            try:
+                await asyncio.sleep(wait)
+            except BaseException:
+                self._lock.release()
+                raise
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        """Note when this login finished, whether or not it worked."""
+        self._last = time.monotonic()
+        self._lock.release()
+
+
 class RoyalMailWebClient:
     """Talks to royalmail.com the way the website's track page does."""
 
@@ -186,10 +222,12 @@ class RoyalMailWebClient:
         state: dict[str, Any] | None = None,
         *,
         session: AsyncSession[Response] | None = None,
+        login_throttle: LoginThrottle | None = None,
     ) -> None:
         """Create a client, optionally resuming a saved session."""
         self._username = username
         self._password = password
+        self._login_throttle = login_throttle
         self._session: AsyncSession[Response] = session or AsyncSession(
             impersonate=IMPERSONATE
         )
@@ -208,6 +246,11 @@ class RoyalMailWebClient:
     def config(self) -> ApiConfig | None:
         """The web API config currently in use."""
         return self._config
+
+    @property
+    def user_id(self) -> str:
+        """The Royal Mail account number, or "" until the client has a token."""
+        return str(self._jwt_claims.get("sub", ""))
 
     @property
     def state(self) -> dict[str, Any]:
@@ -274,35 +317,8 @@ class RoyalMailWebClient:
         """Sign in to www.royalmail.com with the username and password."""
         if (wait := self._login_retry_at - time.time()) > 0:
             raise RateLimited(f"Not retrying the login for another {wait:.0f}s")
-        self._session.cookies.clear()
-        self._jwt = None
-        self._jwt_claims = {}
-        page = await self._request("GET", LOGIN_URL, headers=_page_headers())
-        if page.status_code != 200:
-            raise CannotConnect(f"Login page returned HTTP {page.status_code}")
-        form = next(
-            (chunk for chunk in page.text.split("<form") if "user_login_form" in chunk),
-            "",
-        )
-        if (match := _FORM_BUILD_ID.search(form)) is None:
-            raise CannotConnect("Login form not found")
-
-        response = await self._request(
-            "POST",
-            LOGIN_URL,
-            data={
-                "name": self._username,
-                "pass": self._password,
-                "form_build_id": match.group(1),
-                "form_id": "user_login_form",
-                "op": "Log in",
-            },
-            headers={
-                **_page_headers(),
-                "Origin": WEB_URL,
-                "Referer": LOGIN_URL,
-            },
-        )
+        async with self._login_throttle or nullcontext():
+            response = await self._post_login_form()
         back_on_form = urlsplit(str(response.url)).path.rstrip("/").endswith("/login")
         if response.status_code >= 400:
             raise CannotConnect(f"Login returned HTTP {response.status_code}")
@@ -338,7 +354,7 @@ class RoyalMailWebClient:
         """Return every item in the account's tracked-items history."""
         for attempt in range(2):
             history = _json(
-                await self._api("GET", lambda c: c.history_url(self._user_id))
+                await self._api("GET", lambda c: c.history_url(self.user_id))
             )
             details = [
                 detail
@@ -383,12 +399,38 @@ class RoyalMailWebClient:
         """Remove items from the account's tracked-items history."""
         ids = ",".join(quote(reference, safe="") for reference in references)
         await self._api(
-            "DELETE", lambda c: f"{c.history_url(self._user_id)}?mailPieceId={ids}"
+            "DELETE", lambda c: f"{c.history_url(self.user_id)}?mailPieceId={ids}"
         )
 
-    @property
-    def _user_id(self) -> str:
-        return str(self._jwt_claims.get("sub", ""))
+    async def _post_login_form(self) -> Response:
+        self._session.cookies.clear()
+        self._jwt = None
+        self._jwt_claims = {}
+        page = await self._request("GET", LOGIN_URL, headers=_page_headers())
+        if page.status_code != 200:
+            raise CannotConnect(f"Login page returned HTTP {page.status_code}")
+        form = next(
+            (chunk for chunk in page.text.split("<form") if "user_login_form" in chunk),
+            "",
+        )
+        if (match := _FORM_BUILD_ID.search(form)) is None:
+            raise CannotConnect("Login form not found")
+        return await self._request(
+            "POST",
+            LOGIN_URL,
+            data={
+                "name": self._username,
+                "pass": self._password,
+                "form_build_id": match.group(1),
+                "form_id": "user_login_form",
+                "op": "Log in",
+            },
+            headers={
+                **_page_headers(),
+                "Origin": WEB_URL,
+                "Referer": LOGIN_URL,
+            },
+        )
 
     def _has_web_session(self) -> bool:
         return any(

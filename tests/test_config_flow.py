@@ -19,7 +19,7 @@ from custom_components.royalmail.api import (
     InvalidAuth,
     RateLimited,
 )
-from custom_components.royalmail.const import CONF_SESSION, DOMAIN
+from custom_components.royalmail.const import CONF_SESSION, DATA_LOGIN_THROTTLE, DOMAIN
 
 from .conftest import PASSWORD, SESSION, USERNAME
 
@@ -61,7 +61,9 @@ async def test_user_flow(
         CONF_SESSION: SESSION,
     }
     assert result["result"].unique_id == USERNAME
-    mock_client_class.assert_called_once_with(USERNAME, PASSWORD)
+    mock_client_class.assert_called_once_with(
+        USERNAME, PASSWORD, login_throttle=hass.data[DATA_LOGIN_THROTTLE]
+    )
     mock_client.async_login.assert_awaited_once()
     mock_client.async_ensure_token.assert_awaited_once()
     mock_client.async_close.assert_awaited_once()
@@ -139,7 +141,9 @@ async def test_reauth(
         CONF_PASSWORD: "new-password",
         CONF_SESSION: {**SESSION, "jwt": "fresh-token"},
     }
-    mock_client_class.assert_called_once_with(USERNAME, "new-password")
+    mock_client_class.assert_called_once_with(
+        USERNAME, "new-password", login_throttle=hass.data[DATA_LOGIN_THROTTLE]
+    )
 
 
 @pytest.mark.parametrize(("error", "reason"), ERRORS)

@@ -13,17 +13,26 @@ from .api import (
     CannotConnect,
     CaptchaRequired,
     InvalidAuth,
+    LoginThrottle,
     Parcel,
     RateLimited,
     RoyalMailWebClient,
 )
-from .const import CONF_SESSION, DOMAIN, LOGGER, UPDATE_INTERVAL
+from .const import CONF_SESSION, DATA_LOGIN_THROTTLE, DOMAIN, LOGGER, UPDATE_INTERVAL
 
 type RoyalMailConfigEntry = ConfigEntry[RoyalMailCoordinator]
 
 # Saving the session rewrites the config entry, so only do it when something
 # that matters for resuming changed, not on every cookie refresh.
 _SESSION_KEYS = ("jwt", "config_fetched", "login_retry_at")
+
+
+@callback
+def async_get_login_throttle(hass: HomeAssistant) -> LoginThrottle:
+    """Return the throttle every Royal Mail login in this instance goes through."""
+    if (throttle := hass.data.get(DATA_LOGIN_THROTTLE)) is None:
+        throttle = hass.data[DATA_LOGIN_THROTTLE] = LoginThrottle()
+    return throttle
 
 
 class RoyalMailCoordinator(DataUpdateCoordinator[dict[str, Parcel]]):

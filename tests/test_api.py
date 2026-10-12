@@ -4,14 +4,16 @@ The client runs against a fake HTTP session that answers with synthetic
 responses, so these tests never talk to Royal Mail.
 """
 
+import asyncio
 import base64
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 import copy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 import json
 import time
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from curl_cffi import CurlError
 from curl_cffi.requests import Cookies
@@ -21,10 +23,12 @@ import pytest
 from custom_components.royalmail.api import (
     LOGIN_BACKOFF,
     LOGIN_BACKOFF_MAX,
+    LOGIN_SPACING,
     ApiConfig,
     CannotConnect,
     CaptchaRequired,
     InvalidAuth,
+    LoginThrottle,
     Parcel,
     RateLimited,
     RoyalMailWebClient,
@@ -224,7 +228,10 @@ def saved_state(
 
 
 def make_client(
-    session: FakeSession, state: dict[str, Any] | None = None
+    session: FakeSession,
+    state: dict[str, Any] | None = None,
+    *,
+    throttle: LoginThrottle | None = None,
 ) -> RoyalMailWebClient:
     """Create a client that talks to the fake session."""
     return RoyalMailWebClient(
@@ -232,6 +239,7 @@ def make_client(
         "correct-horse",
         state,
         session=session,  # type: ignore[arg-type]
+        login_throttle=throttle,
     )
 
 
@@ -318,10 +326,12 @@ def test_config_unexpected_format(change: Callable[[dict[str, Any]], Any]) -> No
 async def test_sign_in_and_read_history(session: FakeSession, token: str) -> None:
     """Test a fresh client signs in once and merges history with summaries."""
     client = make_client(session)
+    assert client.user_id == ""
 
     parcels = await client.async_get_parcels()
 
     assert session.urls == SIGN_IN + READ_HISTORY
+    assert client.user_id == "user-guid"
     assert session.last("POST", LOGIN_URL).data == {
         "name": "user@example.com",
         "pass": "correct-horse",
@@ -493,6 +503,93 @@ async def test_login_backoff_capped(session: FakeSession) -> None:
         time.time() + LOGIN_BACKOFF_MAX, abs=5
     )
     assert client.state["login_backoff"] == LOGIN_BACKOFF_MAX
+
+
+@pytest.fixture
+def sleep() -> Generator[AsyncMock]:
+    """Skip the waits between logins, recording how long each would be."""
+    with patch("custom_components.royalmail.api.asyncio.sleep") as sleep:
+        yield sleep
+
+
+async def test_logins_spaced_out(session: FakeSession, sleep: AsyncMock) -> None:
+    """Test clients sharing a throttle log in LOGIN_SPACING seconds apart."""
+    throttle = LoginThrottle()
+
+    await make_client(session, throttle=throttle).async_login()
+    sleep.assert_not_called()
+
+    await make_client(session, throttle=throttle).async_login()
+    sleep.assert_awaited_once()
+    assert sleep.await_args is not None
+    assert sleep.await_args.args[0] == pytest.approx(LOGIN_SPACING, abs=5)
+
+    # Clients without the throttle don't wait.
+    await make_client(session).async_login()
+    sleep.assert_awaited_once()
+
+
+async def test_failed_login_still_spaced(
+    session: FakeSession, sleep: AsyncMock
+) -> None:
+    """Test a login that fails frees the throttle but still counts."""
+    session.route(
+        "GET",
+        LOGIN_URL,
+        CurlError("TLS handshake failed"),
+        FakeResponse(200, LOGIN_PAGE, url=LOGIN_URL),
+    )
+    throttle = LoginThrottle()
+
+    with pytest.raises(CannotConnect):
+        await make_client(session, throttle=throttle).async_login()
+    await make_client(session, throttle=throttle).async_login()
+
+    sleep.assert_awaited_once()
+
+
+async def test_logins_one_at_a_time() -> None:
+    """Test a login waits for the one in progress to finish."""
+    throttle = LoginThrottle(spacing=0)
+    release = asyncio.Event()
+    order: list[str] = []
+
+    async def login(name: str) -> None:
+        async with throttle:
+            order.append(f"{name} started")
+            await release.wait()
+            order.append(f"{name} finished")
+
+    first = asyncio.create_task(login("first"))
+    second = asyncio.create_task(login("second"))
+    for _ in range(3):
+        await asyncio.sleep(0)
+    assert order == ["first started"]
+
+    release.set()
+    await asyncio.gather(first, second)
+    assert order == [
+        "first started",
+        "first finished",
+        "second started",
+        "second finished",
+    ]
+
+
+async def test_login_cancelled_while_waiting(
+    session: FakeSession, sleep: AsyncMock
+) -> None:
+    """Test a login cancelled while it waits its turn frees the throttle."""
+    throttle = LoginThrottle()
+    await make_client(session, throttle=throttle).async_login()
+
+    sleep.side_effect = asyncio.CancelledError
+    with pytest.raises(asyncio.CancelledError):
+        await make_client(session, throttle=throttle).async_login()
+
+    sleep.side_effect = None
+    await make_client(session, throttle=throttle).async_login()
+    assert sleep.await_count == 2
 
 
 @pytest.mark.parametrize(

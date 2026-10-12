@@ -9,7 +9,11 @@ from homeassistant.helpers.typing import ConfigType
 
 from .api import RoyalMailWebClient
 from .const import CONF_SESSION, DOMAIN, LOGGER
-from .coordinator import RoyalMailConfigEntry, RoyalMailCoordinator
+from .coordinator import (
+    RoyalMailConfigEntry,
+    RoyalMailCoordinator,
+    async_get_login_throttle,
+)
 from .services import async_setup_services
 
 PLATFORMS: Final = [Platform.SENSOR]
@@ -28,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: RoyalMailConfigEntry) ->
         entry.data[CONF_USERNAME],
         entry.data[CONF_PASSWORD],
         entry.data.get(CONF_SESSION),
+        login_throttle=async_get_login_throttle(hass),
     )
     entry.async_on_unload(client.async_close)
     coordinator = RoyalMailCoordinator(hass, entry, client)
