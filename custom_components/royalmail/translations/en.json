@@ -106,6 +106,9 @@
     },
     "not_tracked": {
       "message": "{reference} is not one of your Royal Mail tracked items."
+    },
+    "duplicate_account": {
+      "message": "This Royal Mail account is already set up as {title}. Delete one of the two entries."
     }
   },
   "services": {

@@ -40,7 +40,7 @@
     'suggested_object_id': None,
     'supported_features': 0,
     'translation_key': 'parcel',
-    'unique_id': 'royalmail-user@example.com-1b0000000000000000001',
+    'unique_id': 'royalmail-100000001-1b0000000000000000001',
     'unit_of_measurement': None,
   })
 # ---
@@ -115,7 +115,7 @@
     'suggested_object_id': None,
     'supported_features': 0,
     'translation_key': 'parcel',
-    'unique_id': 'royalmail-user@example.com-ab123456789gb',
+    'unique_id': 'royalmail-100000001-ab123456789gb',
     'unit_of_measurement': None,
   })
 # ---
@@ -190,7 +190,7 @@
     'suggested_object_id': None,
     'supported_features': 0,
     'translation_key': 'parcel',
-    'unique_id': 'royalmail-user@example.com-cd987654321gb',
+    'unique_id': 'royalmail-100000001-cd987654321gb',
     'unit_of_measurement': None,
   })
 # ---
@@ -257,7 +257,7 @@
     'suggested_object_id': None,
     'supported_features': 0,
     'translation_key': 'tracked_parcels',
-    'unique_id': 'royalmail-user@example.com-tracked_parcels',
+    'unique_id': 'royalmail-100000001-tracked_parcels',
     'unit_of_measurement': None,
   })
 # ---
@@ -327,7 +327,7 @@
     'suggested_object_id': None,
     'supported_features': 0,
     'translation_key': 'parcel',
-    'unique_id': 'royalmail-user@example.com-ef111111111gb',
+    'unique_id': 'royalmail-100000001-ef111111111gb',
     'unit_of_measurement': None,
   })
 # ---

@@ -124,6 +124,8 @@ async def test_legacy_entities_pruned(
 ) -> None:
     """Test sensors from earlier versions are kept or removed by unique ID."""
     mock_config_entry.add_to_hass(hass)
+    # Earlier versions identified the account by its email.
+    hass.config_entries.async_update_entry(mock_config_entry, unique_id=USERNAME)
     total = entity_registry.async_get_or_create(
         SENSOR_DOMAIN,
         DOMAIN,

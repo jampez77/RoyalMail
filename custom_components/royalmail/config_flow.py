@@ -36,8 +36,11 @@ STEP_REAUTH_SCHEMA = probatio.Schema(
 
 async def _async_sign_in(
     hass: HomeAssistant, username: str, password: str, errors: dict[str, str]
-) -> dict[str, Any] | None:
-    """Sign in to royalmail.com and return the session, or fill in errors."""
+) -> tuple[dict[str, Any], str] | None:
+    """Sign in to royalmail.com, returning the session and account number.
+
+    On failure, fill in errors and return None.
+    """
     client = RoyalMailWebClient(
         username, password, login_throttle=async_get_login_throttle(hass)
     )
@@ -54,7 +57,7 @@ async def _async_sign_in(
         LOGGER.exception("Unexpected error signing in to Royal Mail")
         errors["base"] = "unknown"
     else:
-        return client.state
+        return client.state, client.user_id
     finally:
         await client.async_close()
     return None
@@ -74,12 +77,14 @@ class RoyalMailConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             username = user_input[CONF_USERNAME].strip()
             password = user_input[CONF_PASSWORD]
-            await self.async_set_unique_id(username)
-            self._abort_if_unique_id_configured()
             # Keep the session so setting up doesn't sign in a second time;
             # Royal Mail blocks logins that come in quick succession.
-            session = await _async_sign_in(self.hass, username, password, errors)
-            if session is not None:
+            signed_in = await _async_sign_in(self.hass, username, password, errors)
+            if signed_in is not None:
+                session, user_id = signed_in
+                # The account number stays the same if the email changes.
+                await self.async_set_unique_id(user_id)
+                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=username,
                     data={
@@ -112,11 +117,11 @@ class RoyalMailConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             password = user_input[CONF_PASSWORD]
-            session = await _async_sign_in(self.hass, username, password, errors)
-            if session is not None:
+            signed_in = await _async_sign_in(self.hass, username, password, errors)
+            if signed_in is not None:
                 return self.async_update_reload_and_abort(
                     entry,
-                    data_updates={CONF_PASSWORD: password, CONF_SESSION: session},
+                    data_updates={CONF_PASSWORD: password, CONF_SESSION: signed_in[0]},
                 )
         return self.async_show_form(
             step_id="reauth_confirm",

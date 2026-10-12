@@ -9,13 +9,17 @@ from .coordinator import RoyalMailConfigEntry, RoyalMailCoordinator
 
 
 def account_id(entry: RoyalMailConfigEntry) -> str:
-    """Return the identifier of the Royal Mail account behind an entry."""
+    """Return the identifier of the Royal Mail account behind an entry.
+
+    That's the account number, except for entries from earlier versions that
+    haven't been set up since, which still have the email address.
+    """
     return entry.unique_id or entry.entry_id
 
 
 def entity_unique_id(entry: RoyalMailConfigEntry, key: str) -> str:
     """Return the unique ID of one of the account's entities."""
-    # Matches the unique IDs earlier versions created, so entities carry over.
+    # The format earlier versions used, so moving them over only swaps the ID.
     return f"{DOMAIN}-{account_id(entry)}-{key}".lower()
 
 

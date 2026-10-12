@@ -21,7 +21,7 @@ from custom_components.royalmail.api import (
 )
 from custom_components.royalmail.const import CONF_SESSION, DATA_LOGIN_THROTTLE, DOMAIN
 
-from .conftest import PASSWORD, SESSION, USERNAME
+from .conftest import PASSWORD, SESSION, USER_ID, USERNAME
 
 pytestmark = pytest.mark.usefixtures("mock_setup_entry")
 
@@ -60,7 +60,7 @@ async def test_user_flow(
         CONF_PASSWORD: PASSWORD,
         CONF_SESSION: SESSION,
     }
-    assert result["result"].unique_id == USERNAME
+    assert result["result"].unique_id == USER_ID
     mock_client_class.assert_called_once_with(
         USERNAME, PASSWORD, login_throttle=hass.data[DATA_LOGIN_THROTTLE]
     )

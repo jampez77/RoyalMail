@@ -16,6 +16,7 @@ from custom_components.royalmail.const import CONF_SESSION, DOMAIN
 
 USERNAME = "user@example.com"
 PASSWORD = "correct-horse"
+USER_ID = "100000001"
 
 API_CONFIG = ApiConfig(
     client_id="fake-client-id",
@@ -91,7 +92,7 @@ def mock_config_entry() -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         title=USERNAME,
-        unique_id=USERNAME,
+        unique_id=USER_ID,
         version=1,
         minor_version=2,
         data={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD, CONF_SESSION: SESSION},
@@ -111,6 +112,7 @@ def mock_client_class() -> Generator[MagicMock]:
         ),
     ):
         client = client_class.return_value
+        client.user_id = USER_ID
         client.state = dict(SESSION)
         client.config = API_CONFIG
         client.async_get_parcels.return_value = make_parcels()
