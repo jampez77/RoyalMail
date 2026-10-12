@@ -1,416 +1,176 @@
-"""Royal Mail sensor platform."""
+"""Sensors for the Royal Mail integration."""
 
-from datetime import date, datetime
-from typing import Any
+from typing import Any, override
 
-from aiohttp import ClientSession
-
-from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.sensor import (
+    DOMAIN as SENSOR_DOMAIN,
+    SensorDeviceClass,
+    SensorEntity,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-)
-from homeassistant.util import dt as dt_util
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .api import Parcel
 from .const import (
-    CONF_AVAILABLE_FOR_COLLECTION,
-    CONF_EVENTCODE,
-    CONF_EVENTDATETIME,
-    CONF_EVENTNAME,
-    CONF_EVENTS,
-    CONF_MAILPIECE_ID,
-    CONF_MP_DETAILS,
-    CONF_OUT_FOR_DELIVERY,
-    CONF_PARCELS,
-    CONF_STATUS_DESCRIPTION,
-    CONF_SUMMARY,
+    CATEGORY_STATES,
     DOMAIN,
-    PARCEL_AVAILABLE_FOR_COLLECTION,
-    PARCEL_COLLECTED,
-    PARCEL_COLLECTION,
-    PARCEL_DELIVERED,
-    PARCEL_DELIVERY_TODAY,
-    PARCEL_IN_TRANSIT,
+    EVENT_STATES,
+    PARCEL_STATES,
+    STATE_IN_TRANSIT,
+    STATE_OUT_FOR_DELIVERY,
+    STATE_READY_FOR_COLLECTION,
 )
-from .coordinator import (
-    RoyalMailRemoveMailPieceCoordinator,
-    RoyalMaiMailPiecesCoordinator,
-)
+from .coordinator import RoyalMailConfigEntry, RoyalMailCoordinator
+from .entity import RoyalMailEntity, entity_unique_id
+
+PARALLEL_UPDATES = 0
+
+TRACKED_PARCELS_KEY = "tracked_parcels"
 
 
-def hasMailPieceExpired(hass: HomeAssistant, expiry_date_raw: str) -> bool:
-    """Check if booking has expired."""
-
-    user_timezone = dt_util.get_time_zone(hass.config.time_zone)
-
-    dt_utc = datetime.strptime(expiry_date_raw, "%Y-%m-%dT%H:%M:%S%z").replace(
-        tzinfo=user_timezone
-    )
-    # Convert the datetime to the default timezone
-    expiry_date = dt_utc.astimezone(user_timezone)
-    return (datetime.today().timestamp() - expiry_date.timestamp()) >= 86400
-
-
-async def removeMailPiece(hass: HomeAssistant, mail_piece_id: str):
-    """Remove expired booking."""
-    entry = next(
-        (
-            entry
-            for entry in hass.config_entries.async_entries(DOMAIN)
-            if entry.data.get(CONF_MAILPIECE_ID) == mail_piece_id
-        ),
-        None,
-    )
-
-    if entry is not None:
-        # Remove the config entry
-        await hass.config_entries.async_remove(entry.entry_id)
-
-
-def is_mailpiece_id_present(mp_details: list[dict], mailpiece_id: str) -> bool:
-    """Check if the given mailPieceId is in the mpDetails array."""
-    return any(item[CONF_MAILPIECE_ID] == mailpiece_id for item in mp_details)
-
-
-async def get_sensors(
-    name: str,
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    session: ClientSession,
-    rmCoordinator: RoyalMaiMailPiecesCoordinator,
-) -> list:
-    """Get sensors."""
-
-    data = dict(entry.data)
-
-    rmData = rmCoordinator.data
-
-    mailPieceSensors = []
-
-    parcels = rmData[CONF_MP_DETAILS]
-
-    totalMailPieces = len(parcels)
-
-    for key, value in parcels.items():
-        if value is not None and CONF_EVENTS in value:
-            lastEventCode = value[CONF_EVENTS][0][CONF_EVENTCODE]
-
-            if lastEventCode in PARCEL_DELIVERED or lastEventCode == PARCEL_COLLECTED:
-                lastEventDateTime = value[CONF_EVENTS][0][CONF_EVENTDATETIME]
-                if hasMailPieceExpired(hass, lastEventDateTime):
-                    removeMailPieceCoordinator = RoyalMailRemoveMailPieceCoordinator(
-                        hass, session, data, key
-                    )
-
-                    await removeMailPieceCoordinator.async_refresh()
-
-                    remainingMailPieces = removeMailPieceCoordinator.data.get(
-                        CONF_MP_DETAILS
-                    )
-
-                    if is_mailpiece_id_present(remainingMailPieces, key) is False:
-                        await removeMailPiece(hass, key)
-                        totalMailPieces -= 1
-
-            mailPieceSensors.append(
-                RoyalMailSensor(
-                    hass=hass,
-                    name=name,
-                    data=rmCoordinator.data.get(CONF_MP_DETAILS)[key],
-                    description=SensorEntityDescription(
-                        key=CONF_MAILPIECE_ID,
-                        name=key,
-                        icon="mdi:package-variant-closed-remove",
-                    ),
-                )
-            )
-
-    total_sensor = [
-        TotalParcelsSensor(
-            rmCoordinator,
-            name,
-        )
-    ]
-
-    return total_sensor + mailPieceSensors
+def parcel_state(parcel: Parcel) -> str | None:
+    """Map a parcel's latest tracking event to a sensor state."""
+    if not parcel.summary_ok:
+        return None
+    if parcel.last_event_code and (
+        state := EVENT_STATES.get(parcel.last_event_code.upper())
+    ):
+        return state
+    return CATEGORY_STATES.get((parcel.status_category or "").lower(), STATE_IN_TRANSIT)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: RoyalMailConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up sensors from a config entry created in the integrations UI."""
-    config = hass.data[DOMAIN][entry.entry_id]
-    if entry.options:
-        config.update(entry.options)
-
-    if entry.data:
-        session = async_get_clientsession(hass)
-
-        sensors = await get_sensors(
-            entry.title, hass, entry, session, entry.runtime_data
-        )
-
-        async_add_entities(sensors, update_before_add=True)
-
-
-async def remove_unavailable_entities(hass: HomeAssistant):
-    """Remove entities no longer provided by the integration."""
-    # Access the entity registry
+    """Set up Royal Mail sensors."""
+    coordinator = entry.runtime_data
     registry = er.async_get(hass)
+    known: set[str] = set()
 
-    # Loop through all registered entities
-    for entity_id in list(registry.entities):
-        entity = registry.entities[entity_id]
-        # Check if the entity belongs to your integration (by checking domain)
-        if entity.platform == DOMAIN:
-            # Check if the entity is not available in `hass.states`
-            state = hass.states.get(entity_id)
-
-            # If the entity's state is unavailable or not in `hass.states`
-            if state is None or state.state == "unavailable":
-                registry.async_remove(entity_id)
-
-
-class TotalParcelsSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
-    """Sensor to track the total number of parcels."""
-
-    def __init__(
-        self,
-        coordinator: DataUpdateCoordinator,
-        name: str,
-    ) -> None:
-        """Init."""
-        super().__init__(coordinator)
-        self.coordinator = coordinator
-        self.total_parcels = self.coordinator.data[CONF_MP_DETAILS]
-        self._state = self.get_state()
-        self._name = "Royal Mail Parcels"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{name}")},
-            manufacturer="Royal Mail",
-            model="Item Tracker",
-            name=name,
-            configuration_url="https://github.com/jampez77/RoyalMail/",
-        )
-        self._attr_unique_id = f"{DOMAIN}-{name}-tracked_parcels".lower()
-        self.entity_id = f"sensor.{DOMAIN}_tracked_parcels".lower()
-        self._attr_icon = "mdi:package-variant-closed"
-        self.attrs: dict[str, Any] = {}
-
-    @property
-    def name(self) -> None:
-        """Name."""
-        return self._name
-
-    @property
-    def state(self) -> None:
-        """State."""
-        return self._state
-
-    def get_state(self) -> int:
-        """Update the state based on the number of tracked parcels."""
-        return len(self.total_parcels)
-
-    def update_from_coordinator(self):
-        """Update sensor state and attributes from coordinator data."""
-
-        parcels_out_for_delivery = []
-        parcels_available_for_collection = []
-        for parcel in self.total_parcels.values():
-            if self.is_parcel_delivery_today(parcel):
-                parcels_out_for_delivery.append(parcel)
-
-            if self.is_parcel_available_for_collection(parcel):
-                parcels_available_for_collection.append(parcel)
-
-            for entity in self.hass.data[DOMAIN].values():
-                if (
-                    isinstance(entity, RoyalMailSensor)
-                    and str(parcel[CONF_MAILPIECE_ID]).lower() in entity.unique_id
-                ):
-                    entity.update_parcel_data(parcel)
-
-        if self.total_parcels is not None:
-            self.attrs[CONF_PARCELS] = [
-                parcel[CONF_MAILPIECE_ID] for parcel in self.total_parcels.values()
-            ]
-
-        self.attrs[CONF_OUT_FOR_DELIVERY] = [
-            parcel[CONF_MAILPIECE_ID] for parcel in parcels_out_for_delivery
-        ]
-
-        self.attrs[CONF_AVAILABLE_FOR_COLLECTION] = [
-            parcel[CONF_MAILPIECE_ID] for parcel in parcels_available_for_collection
-        ]
-
-        self._state = self.get_state()
-
-        self.async_write_ha_state()
-
-        self.hass.add_job(remove_unavailable_entities(self.hass))
+    # Drop entities for items no longer in the history, including leftovers
+    # from earlier versions of the integration.
+    wanted = {
+        entity_unique_id(entry, key) for key in (TRACKED_PARCELS_KEY, *coordinator.data)
+    }
+    for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if (
+            registry_entry.domain == SENSOR_DOMAIN
+            and registry_entry.unique_id not in wanted
+        ):
+            registry.async_remove(registry_entry.entity_id)
 
     @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        self.update_from_coordinator()
-        self.async_write_ha_state()
+    def async_sync_parcels() -> None:
+        if not coordinator.last_update_success:
+            return
+        current = set(coordinator.data)
+        for tracking_number in known - current:
+            if entity_id := registry.async_get_entity_id(
+                SENSOR_DOMAIN, DOMAIN, entity_unique_id(entry, tracking_number)
+            ):
+                registry.async_remove(entity_id)
+        if new := current - known:
+            async_add_entities(
+                RoyalMailParcelSensor(coordinator, tracking_number)
+                for tracking_number in sorted(new)
+            )
+        known.clear()
+        known.update(current)
 
-    async def async_added_to_hass(self) -> None:
-        """Handle adding to Home Assistant."""
-        await super().async_added_to_hass()
-        await self.async_update()
-
-    async def async_remove(self) -> None:
-        """Handle the removal of the entity."""
-        # If you have any specific cleanup logic, add it here
-        if self.hass is not None:
-            await super().async_remove()
-
-    def is_parcel_delivery_today(self, parcel: dict) -> bool:
-        """Check if the parcel has been delivered."""
-        lastEventCode = parcel[CONF_EVENTS][0][CONF_EVENTCODE]
-        return lastEventCode in PARCEL_DELIVERY_TODAY
-
-    def is_parcel_available_for_collection(self, parcel: dict) -> bool:
-        """Check if parcel is available for collection."""
-        lastEventCode = parcel[CONF_EVENTS][0][CONF_EVENTCODE]
-        return lastEventCode in PARCEL_AVAILABLE_FOR_COLLECTION
-
-    @property
-    def icon(self) -> str:
-        """Return a representative icon of the timer."""
-        return self._attr_icon
-
-    @property
-    def native_value(self) -> str | date | None:
-        """Native value."""
-        return self._state
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Define entity attributes."""
-        return self.attrs
+    async_add_entities([RoyalMailTrackedParcelsSensor(coordinator)])
+    async_sync_parcels()
+    entry.async_on_unload(coordinator.async_add_listener(async_sync_parcels))
 
 
-class RoyalMailSensor(SensorEntity):
-    """Define an Royal Mail sensor."""
+class RoyalMailParcelSensor(RoyalMailEntity, SensorEntity):
+    """The delivery status of one tracked item."""
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        data: dict,
-        name: str,
-        description: SensorEntityDescription,
-    ) -> None:
-        """Initialize."""
-        self.hass = hass
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{name}")},
-            manufacturer="Royal Mail",
-            model="Item Tracker",
-            name=name,
-            configuration_url="https://github.com/jampez77/RoyalMail/",
-        )
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = PARCEL_STATES
+    _attr_translation_key = "parcel"
 
-        self.data = data
-        sensor_id = f"{DOMAIN}_parcel_{description.name}".lower()
-        # Set the unique ID based on domain, name, and sensor type
-        self._attr_unique_id = f"{DOMAIN}-{name}-{description.name}".lower()
-        self.entity_id = f"sensor.{DOMAIN}_parcel_{description.name}".lower()
-        self.entity_description = description
-        self._name = name
-        self._sensor_id = sensor_id
-        self.attrs = self.update_attributes()
-        self._available = self.update_available()
-        self._state = self.update_state()
-        self._attr_icon = self.update_icon()
-
-    async def async_remove(self) -> None:
-        """Handle the removal of the entity."""
-        # If you have any specific cleanup logic, add it here
-        if self.hass is not None:
-            await super().async_remove()
-
-    def update_state(self) -> str:
-        """Update Name."""
-        value = self.data.get(self.entity_description.key)
-
-        if CONF_SUMMARY in self.data and CONF_EVENTS in self.data:
-            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
-            if lastEventCode in PARCEL_DELIVERED:
-                value = self.data[CONF_SUMMARY][CONF_STATUS_DESCRIPTION]
-            else:
-                value = self.data[CONF_EVENTS][0][CONF_EVENTNAME]
-
-        return value
-
-    def update_available(self) -> bool:
-        """Update Available."""
-        return self.data is not None
-
-    def update_icon(self) -> str:
-        """Update Icon."""
-
-        if CONF_EVENTS in self.data:
-            lastEventCode = self.data[CONF_EVENTS][0][CONF_EVENTCODE]
-            if lastEventCode in PARCEL_DELIVERED:
-                return "mdi:package-variant-closed-check"
-            if lastEventCode in PARCEL_DELIVERY_TODAY:
-                return "mdi:truck-delivery-outline"
-            if lastEventCode in PARCEL_IN_TRANSIT:
-                return "mdi:transit-connection-variant"
-            if lastEventCode in PARCEL_COLLECTION:
-                return "mdi:human-dolly"
-
-        return self.entity_description.icon
-
-    def update_attributes(self) -> dict[str, Any]:
-        """Update Attributes."""
-        attributes = {}
-
-        mail_piece_data = self.data
-        if mail_piece_data:
-            for key, value in mail_piece_data.items():
-                if isinstance(value, dict):
-                    attributes.update({f"{key}_{k}": v for k, v in value.items()})
-                else:
-                    attributes[key] = value
-        return attributes
-
-    def update_parcel_data(self, data):
-        """Update parcel data."""
-        self.data = data
-        self._available = self.update_available()
-        self._attr_icon = self.update_icon()
-        self._state = self.update_state()
-        self.attrs = self.update_attributes()
-
-        self.async_write_ha_state()
+    def __init__(self, coordinator: RoyalMailCoordinator, tracking_number: str) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, tracking_number)
+        self._tracking_number = tracking_number
+        self._parcel = coordinator.data[tracking_number]
+        self._attr_name = self._parcel.alias or tracking_number
 
     @property
+    @override
     def available(self) -> bool:
-        """Return if the entity is available."""
-        return self.update_available()
+        """Return whether the item is still in the history."""
+        return super().available and self._tracking_number in self.coordinator.data
 
     @property
-    def icon(self) -> str:
-        """Return a representative icon of the timer."""
-        return self.update_icon()
+    @override
+    def native_value(self) -> str | None:
+        """Return the delivery status."""
+        return parcel_state(self._parcel)
 
     @property
-    def native_value(self) -> str | date | None:
-        """Native value."""
-        return self.update_state()
-
-    @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Define entity attributes."""
-        return self.update_attributes()
+        """Return details of the latest tracking event."""
+        parcel = self._parcel
+        return {
+            "tracking_number": parcel.tracking_number,
+            "alias": parcel.alias,
+            "product": parcel.product,
+            "last_event": parcel.last_event,
+            "last_event_time": parcel.last_event_time,
+            "last_event_location": parcel.last_event_location,
+            "status_description": parcel.status_description,
+            "summary_line": parcel.summary_line,
+            "carrier": parcel.carrier,
+        }
+
+    @callback
+    @override
+    def _handle_coordinator_update(self) -> None:
+        """Pick up the item's new details, including a changed alias."""
+        if parcel := self.coordinator.data.get(self._tracking_number):
+            self._parcel = parcel
+            self._attr_name = parcel.alias or self._tracking_number
+        super()._handle_coordinator_update()
+
+
+class RoyalMailTrackedParcelsSensor(RoyalMailEntity, SensorEntity):
+    """How many items the account is tracking."""
+
+    _attr_translation_key = TRACKED_PARCELS_KEY
+
+    def __init__(self, coordinator: RoyalMailCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, TRACKED_PARCELS_KEY)
+
+    @property
+    @override
+    def native_value(self) -> int:
+        """Return the number of tracked items."""
+        return len(self.coordinator.data)
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """List the tracked items, and those due today or waiting to be collected."""
+        states = {
+            tracking_number: parcel_state(parcel)
+            for tracking_number, parcel in self.coordinator.data.items()
+        }
+        return {
+            "parcels": list(states),
+            STATE_OUT_FOR_DELIVERY: [
+                number
+                for number, state in states.items()
+                if state == STATE_OUT_FOR_DELIVERY
+            ],
+            STATE_READY_FOR_COLLECTION: [
+                number
+                for number, state in states.items()
+                if state == STATE_READY_FOR_COLLECTION
+            ],
+        }

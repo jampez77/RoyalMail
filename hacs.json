@@ -1,5 +1,6 @@
 {
   "name": "Royal Mail",
   "country": "GB",
+  "homeassistant": "2026.9.0",
   "render_readme": true
 }

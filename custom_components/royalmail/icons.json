@@ -1,0 +1,27 @@
+{
+  "entity": {
+    "sensor": {
+      "parcel": {
+        "default": "mdi:package-variant-closed",
+        "state": {
+          "in_transit": "mdi:transit-connection-variant",
+          "out_for_delivery": "mdi:truck-delivery-outline",
+          "ready_for_collection": "mdi:store-clock-outline",
+          "delivered": "mdi:package-variant-closed-check",
+          "collected": "mdi:human-dolly"
+        }
+      },
+      "tracked_parcels": {
+        "default": "mdi:package-variant"
+      }
+    }
+  },
+  "services": {
+    "track_your_item": {
+      "service": "mdi:package-variant-plus"
+    },
+    "stop_tracking_item": {
+      "service": "mdi:package-variant-remove"
+    }
+  }
+}

@@ -1,88 +1,59 @@
 """The Royal Mail integration."""
 
-from __future__ import annotations
+from typing import Final
 
-import asyncio
-
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState
-from homeassistant.const import Platform
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
-import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN
-from .coordinator import RoyalMaiMailPiecesCoordinator
-from .services import async_cleanup_services, async_setup_services
+from .api import RoyalMailWebClient
+from .const import CONF_SESSION, DOMAIN, LOGGER
+from .coordinator import RoyalMailConfigEntry, RoyalMailCoordinator
+from .services import async_setup_services
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS: Final = [Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up platform from a ConfigEntry."""
-    hass.data.setdefault(DOMAIN, {})
-    hass_data = dict(entry.data)
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the Royal Mail actions."""
+    async_setup_services(hass)
+    return True
 
-    # Authenticate and fetch data before forwarding to the platforms so that a
-    # ConfigEntryAuthFailed starts the reauth flow instead of failing platform setup.
-    coordinator = RoyalMaiMailPiecesCoordinator(
-        hass, async_get_clientsession(hass), hass_data
+
+async def async_setup_entry(hass: HomeAssistant, entry: RoyalMailConfigEntry) -> bool:
+    """Set up Royal Mail from a config entry."""
+    client = RoyalMailWebClient(
+        entry.data[CONF_USERNAME],
+        entry.data[CONF_PASSWORD],
+        entry.data.get(CONF_SESSION),
     )
+    entry.async_on_unload(client.async_close)
+    coordinator = RoyalMailCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
-
-    # Register services when the first config entry is added
-    if not hass.data[DOMAIN]:
-        async_setup_services(hass)
-
-    # Registers update listener to update config entry when options are updated.
-    unsub_options_update_listener = entry.add_update_listener(options_update_listener)
-
-    # Use async_on_unload to register the listener without storing it in entry data
-    entry.async_on_unload(unsub_options_update_listener)
-
-    hass.data[DOMAIN][entry.entry_id] = hass_data
-    # Forward the setup to each platform.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def options_update_listener(hass: HomeAssistant, config_entry: ConfigEntry):
-    """Handle options update."""
-    entry_state = hass.config_entries.async_get_entry(config_entry.entry_id).state
-
-    # Proceed only if the entry is in a valid state (loaded, etc.)
-    if entry_state not in (
-        ConfigEntryState.SETUP_IN_PROGRESS,
-        ConfigEntryState.SETUP_RETRY,
-    ):
-        await hass.config_entries.async_reload(config_entry.entry_id)
-
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: RoyalMailConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = all(
-        await asyncio.gather(
-            *[
-                hass.config_entries.async_forward_entry_unload(entry, platform)
-                for platform in PLATFORMS
-            ]
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: RoyalMailConfigEntry) -> bool:
+    """Migrate entries created by earlier versions."""
+    if entry.version > 1:
+        return False
+    if entry.minor_version < 2:
+        # 1.1 kept app API tokens that no longer work; only the login is reused.
+        username: str = entry.data[CONF_USERNAME]
+        hass.config_entries.async_update_entry(
+            entry,
+            data={CONF_USERNAME: username, CONF_PASSWORD: entry.data[CONF_PASSWORD]},
+            unique_id=entry.unique_id or username,
+            minor_version=2,
         )
-    )
-
-    # Remove config entry from domain.
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    # If this was the last config entry, unregister the services
-    if not hass.data[DOMAIN]:
-        async_cleanup_services(hass)
-
-    return unload_ok
-
-
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the Royal Mail component from yaml configuration."""
-    hass.data.setdefault(DOMAIN, {})
+    LOGGER.debug("Migrated to version %s.%s", entry.version, entry.minor_version)
     return True

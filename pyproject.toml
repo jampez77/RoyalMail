@@ -40,6 +40,14 @@ force-sort-within-sections = true
 known-first-party = ["custom_components", "tests"]
 combine-as-imports = true
 split-on-trailing-comma = false
+# Keep Home Assistant imports in their own block, as core does.
+section-order = [
+    "future", "standard-library", "third-party", "homeassistant", "first-party",
+    "local-folder",
+]
+
+[tool.ruff.lint.isort.sections]
+homeassistant = ["homeassistant"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D100", "D103", "D104", "S101", "S105", "S106", "SLF001", "PLR2004"]

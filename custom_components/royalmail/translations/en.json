@@ -1,50 +1,133 @@
 {
-    "config": {
-        "abort": {
-            "already_configured": "Device is already configured",
-            "reauth_successful": "Re-authentication was successful"
+  "config": {
+    "step": {
+      "user": {
+        "description": "Sign in with your royalmail.com account. Every item in the account's tracked items, including ones you track in the Royal Mail app, shows up in Home Assistant.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
         },
-        "error": {
-            "cannot_connect": "Failed to connect",
-            "invalid_auth": "Invalid authentication",
-            "unknown": "Unexpected error"
-        },
-        "step": {
-            "user": {
-                "data": {
-                    "password": "Password",
-                    "username": "Username"
-                }
-            },
-            "reauth_confirm": {
-                "title": "Re-authenticate Royal Mail",
-                "description": "Your Royal Mail login for {username} stopped working. Enter your password again.",
-                "data": {
-                    "password": "Password"
-                }
-            }
+        "data_description": {
+          "username": "The email address you use to sign in to royalmail.com.",
+          "password": "Your royalmail.com password."
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Royal Mail",
+        "description": "Your Royal Mail login for {username} stopped working. Enter your password again.",
+        "data": {
+          "password": "Password"
+        },
+        "data_description": {
+          "password": "Your royalmail.com password."
+        }
+      }
     },
-    "services": {
-        "stop_tracking_item": {
-            "description": "Stop tracking a Royal Mail parcel",
-            "fields": {
-                "reference_number": {
-                    "description": "e.g. AA123456789US",
-                    "name": "Your reference number"
-                }
-            },
-            "name": "Stop tracking an item"
-        },
-        "track_your_item": {
-            "description": "Track a Royal Mail parcel",
-            "fields": {
-                "reference_number": {
-                    "description": "e.g. AA123456789US",
-                    "name": "Your reference number"
-                }
-            },
-            "name": "Track your item"
-        }
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "rate_limited": "Royal Mail is temporarily refusing sign-ins. Wait at least 30 minutes and try again.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Account is already configured",
+      "reauth_successful": "Re-authentication was successful",
+      "single_instance_allowed": "Already configured. Only a single configuration possible."
     }
+  },
+  "entity": {
+    "sensor": {
+      "parcel": {
+        "state": {
+          "in_transit": "In transit",
+          "out_for_delivery": "Out for delivery",
+          "ready_for_collection": "Ready for collection",
+          "delivered": "Delivered",
+          "collected": "Collected"
+        },
+        "state_attributes": {
+          "tracking_number": {
+            "name": "Tracking number"
+          },
+          "alias": {
+            "name": "Alias"
+          },
+          "product": {
+            "name": "Product"
+          },
+          "last_event": {
+            "name": "Last event"
+          },
+          "last_event_time": {
+            "name": "Last event time"
+          },
+          "last_event_location": {
+            "name": "Last event location"
+          },
+          "status_description": {
+            "name": "Status"
+          },
+          "summary_line": {
+            "name": "Summary"
+          },
+          "carrier": {
+            "name": "Carrier"
+          }
+        }
+      },
+      "tracked_parcels": {
+        "name": "Tracked parcels",
+        "state_attributes": {
+          "parcels": {
+            "name": "Parcels"
+          },
+          "out_for_delivery": {
+            "name": "Out for delivery"
+          },
+          "ready_for_collection": {
+            "name": "Ready for collection"
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "Royal Mail rejected the saved username or password."
+    },
+    "rate_limited": {
+      "message": "Royal Mail is temporarily refusing sign-ins. The integration will try again later."
+    },
+    "cannot_connect": {
+      "message": "Error talking to Royal Mail: {error}"
+    },
+    "captcha_required": {
+      "message": "Royal Mail wants a captcha before it accepts this from Home Assistant. Track the item once on royalmail.com or in the Royal Mail app and it will show up automatically."
+    },
+    "not_tracked": {
+      "message": "{reference} is not one of your Royal Mail tracked items."
+    }
+  },
+  "services": {
+    "track_your_item": {
+      "name": "Track your item",
+      "description": "Adds an item to your Royal Mail tracked items, so it gets a sensor.",
+      "fields": {
+        "reference_number": {
+          "name": "Reference number",
+          "description": "The tracking reference, for example AB123456789GB."
+        }
+      }
+    },
+    "stop_tracking_item": {
+      "name": "Stop tracking an item",
+      "description": "Removes an item from your Royal Mail tracked items, along with its sensor.",
+      "fields": {
+        "reference_number": {
+          "name": "Reference number",
+          "description": "The tracking reference, for example AB123456789GB."
+        }
+      }
+    }
+  }
 }
