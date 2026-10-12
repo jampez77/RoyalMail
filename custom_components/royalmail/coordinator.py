@@ -276,17 +276,9 @@ class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
             return {"status": "pending"}
 
         if not self.access_token or not self.guid:
-            self.authenticating = True
-            updated_tokens = await self.token_manager.refresh_tokens()
-            self.authenticating = False
-
-            if updated_tokens:
-                self.access_token = updated_tokens.get(CONF_ACCESS_TOKEN)
-                self.guid = updated_tokens.get(CONF_GUID)
-            else:
-                raise UpdateFailed(
-                    "Failed to refresh tokens and missing essential data."
-                )
+            await self._refresh_tokens(
+                "Failed to refresh tokens and missing essential data."
+            )
 
         def validateResponse(all_mailpieces):
             """Validate Response."""
@@ -295,11 +287,14 @@ class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
 
         try:
             respAllMailPieces = await self._make_request_all_mailpieces()
-            if respAllMailPieces.status in [401, 429]:
-                self.authenticating = True
-                await self.token_manager.refresh_tokens()
-                self.authenticating = False
+            if respAllMailPieces.status == 401:
+                await self._refresh_tokens("Failed to refresh expired tokens.")
                 respAllMailPieces = await self._make_request_all_mailpieces()
+                if respAllMailPieces.status == 401:
+                    raise InvalidAuth("Invalid authentication credentials")
+
+            if respAllMailPieces.status == 429:
+                raise APIRatelimitExceeded("API rate limit exceeded.")
 
             all_mailpieces = await respAllMailPieces.json()
 
@@ -329,6 +324,8 @@ class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(str(err)) from err
         except ConfigEntryAuthFailed as err:
             raise ConfigEntryAuthFailed(f"Config Entry Failed: {err}") from err
+        except UpdateFailed:
+            raise
         except ValueError as err:
             _LOGGER.error("Value error occurred: %s", err)
             raise UpdateFailed(f"Unexpected response: {err}") from err
@@ -337,6 +334,21 @@ class RoyalMaiMailPiecesCoordinator(DataUpdateCoordinator):
             raise UnknownError from err
         else:
             return mail_pieces
+
+    async def _refresh_tokens(self, failure_message: str) -> None:
+        """Refresh the tokens and apply them to this coordinator."""
+        self.authenticating = True
+        try:
+            updated_tokens = await self.token_manager.refresh_tokens()
+        finally:
+            self.authenticating = False
+
+        if not updated_tokens:
+            raise UpdateFailed(failure_message)
+
+        self.access_token = updated_tokens.get(CONF_ACCESS_TOKEN)
+        self.refresh_token = updated_tokens.get(CONF_REFRESH_TOKEN)
+        self.guid = updated_tokens.get(CONF_GUID)
 
     async def _make_request_all_mailpieces(self):
         """Make the API request."""
