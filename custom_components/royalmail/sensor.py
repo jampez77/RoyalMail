@@ -79,15 +79,15 @@ def is_mailpiece_id_present(mp_details: list[dict], mailpiece_id: str) -> bool:
 
 
 async def get_sensors(
-    name: str, hass: HomeAssistant, entry: ConfigEntry, session: ClientSession
+    name: str,
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    session: ClientSession,
+    rmCoordinator: RoyalMaiMailPiecesCoordinator,
 ) -> list:
     """Get sensors."""
 
     data = dict(entry.data)
-
-    rmCoordinator = RoyalMaiMailPiecesCoordinator(hass, session, data)
-
-    await rmCoordinator.async_config_entry_first_refresh()
 
     rmData = rmCoordinator.data
 
@@ -154,7 +154,9 @@ async def async_setup_entry(
     if entry.data:
         session = async_get_clientsession(hass)
 
-        sensors = await get_sensors(entry.title, hass, entry, session)
+        sensors = await get_sensors(
+            entry.title, hass, entry, session, entry.runtime_data
+        )
 
         async_add_entities(sensors, update_before_add=True)
 

@@ -8,9 +8,11 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
+from .coordinator import RoyalMaiMailPiecesCoordinator
 from .services import async_cleanup_services, async_setup_services
 
 PLATFORMS = [Platform.SENSOR]
@@ -21,6 +23,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up platform from a ConfigEntry."""
     hass.data.setdefault(DOMAIN, {})
     hass_data = dict(entry.data)
+
+    # Authenticate and fetch data before forwarding to the platforms so that a
+    # ConfigEntryAuthFailed starts the reauth flow instead of failing platform setup.
+    coordinator = RoyalMaiMailPiecesCoordinator(
+        hass, async_get_clientsession(hass), hass_data
+    )
+    await coordinator.async_config_entry_first_refresh()
+    entry.runtime_data = coordinator
 
     # Register services when the first config entry is added
     if not hass.data[DOMAIN]:
