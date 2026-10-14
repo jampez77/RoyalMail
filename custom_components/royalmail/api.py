@@ -23,7 +23,7 @@ import time
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, urlsplit
 
-from curl_cffi import CurlError
+from curl_cffi import CurlECode, CurlError
 from curl_cffi.requests import AsyncSession, Response
 
 if TYPE_CHECKING:
@@ -61,6 +61,9 @@ _FORM_BUILD_ID = re.compile(r'name="form_build_id"\s+value="([^"]+)"')
 _RATE_LIMIT_MARKERS = ("experiencing technical issues", "temporarily blocked")
 _CLIENT_ID_MARKERS = ("client id", "not registered to plan")
 _CAPTCHA_MARKERS = ("captcha", "api-session", "api session")
+# Without a solved captcha, Royal Mail doesn't answer a captcha-protected
+# request: it resets the HTTP/2 stream, or stalls until the request times out.
+_CAPTCHA_DROPS = (CurlECode.HTTP2_STREAM, CurlECode.OPERATION_TIMEDOUT)
 
 
 class RoyalMailError(Exception):
@@ -408,7 +411,9 @@ class RoyalMailWebClient:
     async def async_track(self, reference: str) -> dict[str, Any]:
         """Look up an item, which also adds it to the account's history."""
         response = await self._api(
-            "GET", lambda c: c.mailpieces_url(reference, c.events_seg)
+            "GET",
+            lambda c: c.mailpieces_url(reference, c.events_seg),
+            captcha_protected=True,
         )
         return _json(response)
 
@@ -487,6 +492,7 @@ class RoyalMailWebClient:
         *,
         params: dict[str, str] | None = None,
         passthrough: tuple[int, ...] = (),
+        captcha_protected: bool = False,
         retry_auth: bool = True,
         retry_config: bool = True,
     ) -> Response:
@@ -503,9 +509,26 @@ class RoyalMailWebClient:
         }
         if self._api_session and self._api_session_expiry > time.time():
             headers[API_SESSION_HEADER] = self._api_session
-        response = await self._request(
-            method, url(config), params=params, headers=headers, timeout=config.timeout
-        )
+        try:
+            response = await self._request(
+                method,
+                url(config),
+                params=params,
+                headers=headers,
+                timeout=config.timeout,
+            )
+        except CannotConnect as err:
+            cause = err.__cause__
+            if (
+                captcha_protected
+                and isinstance(cause, CurlError)
+                and cause.code in _CAPTCHA_DROPS
+            ):
+                raise CaptchaRequired(
+                    f"Royal Mail dropped the request, as it does when it wants "
+                    f"a captcha: {cause}"
+                ) from err
+            raise
         self._remember_api_session(response)
         status = response.status_code
         if status in passthrough or status < 400:
@@ -521,6 +544,7 @@ class RoyalMailWebClient:
                     url,
                     params=params,
                     passthrough=passthrough,
+                    captcha_protected=captcha_protected,
                     retry_auth=retry_auth,
                     retry_config=False,
                 )
@@ -536,6 +560,7 @@ class RoyalMailWebClient:
                     url,
                     params=params,
                     passthrough=passthrough,
+                    captcha_protected=captcha_protected,
                     retry_auth=False,
                     retry_config=retry_config,
                 )

@@ -15,7 +15,7 @@ import time
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-from curl_cffi import CurlError
+from curl_cffi import CurlECode, CurlError
 from curl_cffi.requests import Cookies
 from freezegun.api import FrozenDateTimeFactory
 import pytest
@@ -764,6 +764,41 @@ async def test_captcha_required(session: FakeSession) -> None:
 
     with pytest.raises(CaptchaRequired):
         await make_client(session, saved_state()).async_track("AB123456789GB")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        CurlError("HTTP/2 stream 1 was reset", CurlECode.HTTP2_STREAM),
+        CurlError("Operation timed out", CurlECode.OPERATION_TIMEDOUT),
+    ],
+)
+async def test_dropped_lookup_wants_captcha(
+    session: FakeSession, error: CurlError
+) -> None:
+    """Test a lookup Royal Mail drops instead of answering is reported as a captcha."""
+    session.route("GET", EVENTS_URL, error)
+
+    with pytest.raises(CaptchaRequired, match="dropped the request"):
+        await make_client(session, saved_state()).async_track("AB123456789GB")
+
+
+async def test_other_drops_cannot_connect(session: FakeSession) -> None:
+    """Test other failures, and drops of unprotected requests, aren't a captcha."""
+    session.route(
+        "GET", EVENTS_URL, CurlError("Could not connect", CurlECode.COULDNT_CONNECT)
+    )
+    session.route(
+        "GET",
+        HISTORY_URL,
+        CurlError("Operation timed out", CurlECode.OPERATION_TIMEDOUT),
+    )
+    client = make_client(session, saved_state())
+
+    with pytest.raises(CannotConnect, match="Could not connect"):
+        await client.async_track("AB123456789GB")
+    with pytest.raises(CannotConnect, match="Operation timed out"):
+        await client.async_get_parcels()
 
 
 @pytest.mark.parametrize(
