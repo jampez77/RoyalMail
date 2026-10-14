@@ -17,6 +17,8 @@ DATA_LOGIN_THROTTLE: Final[HassKey[LoginThrottle]] = HassKey(f"{DOMAIN}_login_th
 CONF_SESSION: Final = "session"
 
 UPDATE_INTERVAL: Final = timedelta(minutes=15)
+# Tracking events each item's sensor remembers. Items rarely have more than 20.
+MAX_EVENTS: Final = 50
 
 SERVICE_TRACK_ITEM: Final = "track_your_item"
 SERVICE_STOP_TRACKING_ITEM: Final = "stop_tracking_item"

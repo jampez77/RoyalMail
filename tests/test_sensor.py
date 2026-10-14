@@ -1,6 +1,7 @@
 """Tests for the Royal Mail sensors."""
 
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 from freezegun.api import FrozenDateTimeFactory
@@ -8,17 +9,19 @@ import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
+    async_mock_restore_state_shutdown_restart,
+    mock_restore_cache_with_extra_data,
     snapshot_platform,
 )
 from syrupy.assertion import SnapshotAssertion
 
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.const import STATE_UNAVAILABLE
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.royalmail.api import CannotConnect, Parcel
-from custom_components.royalmail.const import DOMAIN, UPDATE_INTERVAL
+from custom_components.royalmail.const import DOMAIN, MAX_EVENTS, UPDATE_INTERVAL
 from custom_components.royalmail.sensor import parcel_state
 
 from .conftest import USER_ID, USERNAME, make_parcels
@@ -26,6 +29,16 @@ from .conftest import USER_ID, USERNAME, make_parcels
 TOTAL = f"sensor.{USER_ID}_tracked_parcels"
 KETTLE = f"sensor.{USER_ID}_kettle"
 BOOKS = f"sensor.{USER_ID}_books"
+SHOES = f"sensor.{USER_ID}_shoes"
+LAMP_REF = "1B0000000000000000001"
+LAMP = f"sensor.{USER_ID}_{LAMP_REF.lower()}"
+WHEN = datetime(2026, 10, 12, 9, 30, tzinfo=UTC)
+OUT_FOR_DELIVERY = {
+    "code": "EVGPD",
+    "event": "Out for delivery",
+    "time": WHEN,
+    "location": None,
+}
 
 
 async def _poll(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -118,6 +131,119 @@ async def test_item_details_update(
     total = hass.states.get(TOTAL).attributes
     assert total["out_for_delivery"] == []
     assert total["delivery_attempted"] == ["1B0000000000000000001"]
+
+
+@pytest.mark.usefixtures("init_integration")
+async def test_events_build_up(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, mock_client: MagicMock
+) -> None:
+    """Test each item's sensor keeps a timeline of the events it has seen."""
+    assert hass.states.get(LAMP).attributes["events"] == [OUT_FOR_DELIVERY]
+    assert hass.states.get(f"sensor.{USER_ID}_unknown_item").attributes["events"] == []
+    # The recorder keeps each latest event; the timeline stays out of it.
+    assert "events" in hass.states.get(LAMP).state_info["unrecorded_attributes"]
+
+    parcels = make_parcels()
+    attempted = replace(
+        parcels[LAMP_REF],
+        last_event="Delivery attempted",
+        last_event_code="EVKNR",
+        last_event_time=WHEN + timedelta(hours=3),
+        last_event_location="Example Delivery Office",
+        status_category="Delivery Attempted",
+    )
+    parcels[LAMP_REF] = attempted
+    mock_client.async_get_parcels.return_value = parcels
+    await _poll(hass, freezer)
+    # Seeing the same event again doesn't repeat it.
+    await _poll(hass, freezer)
+
+    attempted_event = {
+        "code": "EVKNR",
+        "event": "Delivery attempted",
+        "time": WHEN + timedelta(hours=3),
+        "location": "Example Delivery Office",
+    }
+    assert hass.states.get(LAMP).attributes["events"] == [
+        attempted_event,
+        OUT_FOR_DELIVERY,
+    ]
+
+    # Royal Mail rewording an event updates it rather than adding another.
+    mock_client.async_get_parcels.return_value = {
+        **parcels,
+        LAMP_REF: replace(attempted, last_event_location="Example Office"),
+    }
+    await _poll(hass, freezer)
+
+    assert hass.states.get(LAMP).attributes["events"] == [
+        {**attempted_event, "location": "Example Office"},
+        OUT_FOR_DELIVERY,
+    ]
+
+
+async def test_events_kept_across_restart(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    mock_client: MagicMock,
+    init_integration: MockConfigEntry,
+) -> None:
+    """Test the timeline survives Home Assistant restarting."""
+    parcels = make_parcels()
+    parcels[LAMP_REF] = replace(
+        parcels[LAMP_REF],
+        last_event="Delivery attempted",
+        last_event_code="EVKNR",
+        last_event_time=WHEN + timedelta(hours=3),
+    )
+    mock_client.async_get_parcels.return_value = parcels
+    await _poll(hass, freezer)
+
+    assert await hass.config_entries.async_unload(init_integration.entry_id)
+    await async_mock_restore_state_shutdown_restart(hass)
+    assert await hass.config_entries.async_setup(init_integration.entry_id)
+    await hass.async_block_till_done()
+
+    events = hass.states.get(LAMP).attributes["events"]
+    assert [event["code"] for event in events] == ["EVKNR", "EVGPD"]
+    assert events[1] == OUT_FOR_DELIVERY
+
+
+async def test_restored_events_checked(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """Test restored timelines are capped, sorted, and dropped when unreadable."""
+    older = [
+        {
+            "code": "EVNRT",
+            "event": "We've got it",
+            "time": (WHEN - timedelta(hours=hours)).isoformat(),
+            "location": None,
+        }
+        for hours in range(1, MAX_EVENTS + 1)
+    ]
+    untimed = {"code": "EVAIP", "event": "Expected", "time": None, "location": None}
+    mock_restore_cache_with_extra_data(
+        hass,
+        [
+            (State(LAMP, "in_transit"), {"events": older}),
+            (State(KETTLE, "delivered"), {"events": "unreadable"}),
+            (State(SHOES, "ready_for_collection"), {"events": [untimed]}),
+        ],
+    )
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    lamp = hass.states.get(LAMP).attributes["events"]
+    assert len(lamp) == MAX_EVENTS
+    assert lamp[0] == OUT_FOR_DELIVERY
+    assert lamp[-1]["time"] == WHEN - timedelta(hours=MAX_EVENTS - 1)
+    kettle = hass.states.get(KETTLE).attributes["events"]
+    assert [event["code"] for event in kettle] == ["EVKSP"]
+    # An event without a time goes after those with one.
+    shoes = hass.states.get(SHOES).attributes["events"]
+    assert [event["code"] for event in shoes] == ["EVKLS", "EVAIP"]
 
 
 async def test_legacy_entities_pruned(

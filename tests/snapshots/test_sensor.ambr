@@ -57,6 +57,14 @@
       'co2e_grams': None,
       'destination_country': None,
       <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
+      'events': list([
+        dict({
+          'code': 'EVGPD',
+          'event': 'Out for delivery',
+          'location': None,
+          'time': datetime.datetime(2026, 10, 12, 9, 30, tzinfo=datetime.timezone.utc),
+        }),
+      ]),
       <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: '100000001 1B0000000000000000001',
       'last_event': 'Out for delivery',
       'last_event_code': 'EVGPD',
@@ -150,6 +158,14 @@
       'co2e_grams': 205,
       'destination_country': 'United Kingdom',
       <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
+      'events': list([
+        dict({
+          'code': 'EVKSP',
+          'event': 'Delivered',
+          'location': 'Example Delivery Office',
+          'time': datetime.datetime(2026, 10, 12, 9, 30, tzinfo=datetime.timezone.utc),
+        }),
+      ]),
       <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: '100000001 Kettle',
       'last_event': 'Delivered',
       'last_event_code': 'EVKSP',
@@ -243,6 +259,14 @@
       'co2e_grams': None,
       'destination_country': None,
       <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
+      'events': list([
+        dict({
+          'code': 'EVKLS',
+          'event': 'Delivered to Your Collection Point',
+          'location': None,
+          'time': datetime.datetime(2026, 10, 12, 9, 30, tzinfo=datetime.timezone.utc),
+        }),
+      ]),
       <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: '100000001 Shoes',
       'last_event': 'Delivered to Your Collection Point',
       'last_event_code': 'EVKLS',
@@ -400,6 +424,8 @@
       'co2e_grams': None,
       'destination_country': None,
       <EntityStateAttribute.DEVICE_CLASS: 'device_class'>: 'enum',
+      'events': list([
+      ]),
       <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: '100000001 Unknown item',
       'last_event': None,
       'last_event_code': None,
