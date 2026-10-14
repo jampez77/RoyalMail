@@ -314,29 +314,29 @@ How the integration reacts:
 
 ## Event codes
 
-Not a complete list. The integration maps the latest event's code to a sensor state:
+Not a complete list. Codes with a sensor state set the state directly; for the others, marked "category", the summary's `statusCategory` decides:
 
 | Code | Royal Mail's text | Sensor state |
 | --- | --- | --- |
-| EVAIE, EVAIP | Sender preparing/despatching item | `in_transit` |
-| EVPPA | Accepted at Parcelshop | `in_transit` |
-| EVOCO | We've received your item and it's now being processed for delivery | `in_transit` |
-| EVDAV, EVIMC, EVDAC, EVBAV, EVIAV | Item received | `in_transit` |
-| EVOAC | Item received at | `in_transit` |
-| EVORI | Arrived at | `in_transit` |
-| EVODO | Item despatched to delivery office or mail centre | `in_transit` |
-| RSRXS, RORXS | Delivery request received | `in_transit` |
-| EVNRT | Item retention | `in_transit` |
-| EVKNA | Delivery attempted, no answer | `in_transit` |
-| EVKNR | Delivery attempted | `in_transit` |
-| EVNSR | Item prepared for redelivery | `in_transit` |
-| EVNDA | Available for redelivery or collection | `in_transit` |
-| EVHAC | Item Received by Royal Mail (international) | `in_transit` |
-| EVHOE | Item Leaving the UK (international) | `in_transit` |
-| EVJIC | With Customs in destination country (international) | `in_transit` |
-| EVJOE | Item Received (international) | `in_transit` |
-| EVIIS | Item received at Sorting Office (international) | `in_transit` |
-| EVGID | Arrived at Delivery Office (international) | `in_transit` |
+| EVAIE, EVAIP | Sender preparing/despatching item | `expected` |
+| EVPPA | Accepted at Parcelshop | category |
+| EVOCO | We've received your item and it's now being processed for delivery | category |
+| EVDAV, EVIMC, EVDAC, EVBAV, EVIAV | Item received | category |
+| EVOAC | Item received at | category |
+| EVORI | Arrived at | category |
+| EVODO | Item despatched to delivery office or mail centre | category |
+| RSRXS, RORXS | Delivery request received | category |
+| EVNRT | Item retention | category |
+| EVKNA | Delivery attempted, no answer | `delivery_attempted` |
+| EVKNR | Delivery attempted | `delivery_attempted` |
+| EVNSR | Item prepared for redelivery | category |
+| EVNDA | Available for redelivery or collection | `delivery_attempted` |
+| EVHAC | Item Received by Royal Mail (international) | category |
+| EVHOE | Item Leaving the UK (international) | category |
+| EVJIC | With Customs in destination country (international) | `in_customs` |
+| EVJOE | Item Received (international) | category |
+| EVIIS | Item received at Sorting Office (international) | category |
+| EVGID | Arrived at Delivery Office (international) | category |
 | EVGPD | Due to be delivered today | `out_for_delivery` |
 | EVKPD | Due to be delivered today (international) | `out_for_delivery` |
 | EVKLS | Delivered to your collection point | `ready_for_collection` |
@@ -347,7 +347,11 @@ Not a complete list. The integration maps the latest event's code to a sensor st
 | EVPLC | Collected | `collected` |
 | EVPLF | Not recorded | `collected` |
 
-For a code that isn't listed, the integration falls back to the summary's `statusCategory`: `Delivered` becomes `delivered`, `Collected` becomes `collected`, and anything else `in_transit`.
+The integration works out an item's state in this order:
+
+1. A `statusCategory` that says the item went wrong wins: `Returned to Sender` becomes `returned_to_sender`, and `Duplicate Identified` or `Restricted or Prohibited Contents` becomes `problem`. They come first because a returned item's last event is an ordinary one, such as `EVKOP` when it reaches the sender.
+2. Otherwise, a code with a sensor state in the table above.
+3. Otherwise, the `statusCategory`: `We're expecting it` becomes `expected`, `In Customs` becomes `in_customs`, `Delivery Attempted` becomes `delivery_attempted`, `Delivered` becomes `delivered`, `Collected` becomes `collected` and `No Status` becomes unknown. Anything else is `in_transit`, including `Pending`, which shares the customs icon on the track page but whose meaning isn't known.
 
 ## The app API
 

@@ -77,6 +77,7 @@ To give the device a friendlier name, open it under **Settings** > **Devices & s
 | --- | --- |
 | `parcels` | The tracking numbers of every item. |
 | `out_for_delivery` | Tracking numbers of the items due today. |
+| `delivery_attempted` | Tracking numbers of the items Royal Mail tried and failed to deliver. |
 | `ready_for_collection` | Tracking numbers of the items waiting at a collection point. |
 
 ### One sensor per item
@@ -87,12 +88,19 @@ The state is one of:
 
 | State | Meaning |
 | --- | --- |
-| `in_transit` | Royal Mail has the item. This includes failed delivery attempts. |
+| `expected` | The sender has told Royal Mail it's coming but hasn't handed it over yet. |
+| `in_transit` | Royal Mail has the item and it's on its way. |
+| `in_customs` | Held in customs. |
 | `out_for_delivery` | Due to be delivered today. |
+| `delivery_attempted` | Royal Mail tried to deliver it and couldn't, for example because nobody was in. It's waiting for redelivery or collection. |
 | `ready_for_collection` | Waiting at a Post Office, Customer Service Point or other collection point. |
 | `delivered` | Delivered. |
 | `collected` | Collected from a collection point. |
+| `returned_to_sender` | On its way back to the sender, or already there. |
+| `problem` | Royal Mail flagged a duplicate barcode, or restricted or prohibited contents. `status_category` says which. |
 | `unknown` | Royal Mail has no tracking events for it yet, for example when a label has been printed but the item hasn't been handed over. |
+
+The state comes from Royal Mail's status category and the latest event code. [Event codes](api.md#event-codes) explains how.
 
 | Attribute | Description |
 | --- | --- |
@@ -108,7 +116,7 @@ The state is one of:
 | `last_event_code` | Royal Mail's code for the latest event, for example `EVKOP`. See [Event codes](api.md#event-codes). |
 | `last_event_time` | When the latest event happened. |
 | `last_event_location` | Where it happened, for example a delivery office. |
-| `status_category` | Royal Mail's progress step, as on the track page: one of *We're expecting it*, *We've got it*, *Left Origin Country*, *In Customs*, *Released from Customs*, *Left the UK*, *In Transit*, *Ready for Delivery*, *Delivery Attempted*, *Pending*, *Returned to Sender*, *Delivered*, *Collected*, *Duplicate Identified*, *Restricted or Prohibited Contents* or *No Status*. Finer-grained than the state, for example for a failed delivery or an item held in customs. |
+| `status_category` | Royal Mail's progress step, as on the track page: one of *We're expecting it*, *We've got it*, *Left Origin Country*, *In Customs*, *Released from Customs*, *Left the UK*, *In Transit*, *Ready for Delivery*, *Delivery Attempted*, *Pending*, *Returned to Sender*, *Delivered*, *Collected*, *Duplicate Identified*, *Restricted or Prohibited Contents* or *No Status*. Finer-grained than the state, for example *Left the UK* or *Released from Customs*. |
 | `status_description` | Royal Mail's short status. |
 | `summary_line` | Royal Mail's one-line summary. |
 | `co2e_grams` | Royal Mail's estimate of the item's carbon footprint, in grams of CO2e. Empty until Royal Mail has worked it out. |
