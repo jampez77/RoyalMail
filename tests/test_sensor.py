@@ -104,17 +104,20 @@ async def test_item_details_update(
     parcels["1B0000000000000000001"] = replace(
         parcels["1B0000000000000000001"],
         alias="Lamp",
-        last_event="Delivered",
-        last_event_code="EVKOP",
+        last_event="Delivery attempted",
+        last_event_code="EVKNR",
+        status_category="Delivery Attempted",
     )
     mock_client.async_get_parcels.return_value = parcels
     await _poll(hass, freezer)
 
     state = hass.states.get(f"sensor.{USER_ID}_1b0000000000000000001")
-    assert state.state == "delivered"
+    assert state.state == "delivery_attempted"
     assert state.attributes["friendly_name"] == f"{USER_ID} Lamp"
-    assert state.attributes["last_event"] == "Delivered"
-    assert hass.states.get(TOTAL).attributes["out_for_delivery"] == []
+    assert state.attributes["last_event"] == "Delivery attempted"
+    total = hass.states.get(TOTAL).attributes
+    assert total["out_for_delivery"] == []
+    assert total["delivery_attempted"] == ["1B0000000000000000001"]
 
 
 async def test_legacy_entities_pruned(
@@ -164,10 +167,12 @@ async def test_legacy_entities_pruned(
         (Parcel("A", summary_ok=True), "in_transit"),
         (Parcel("A", last_event_code="evgpd", summary_ok=True), "out_for_delivery"),
         (Parcel("A", last_event_code="EVKPD", summary_ok=True), "out_for_delivery"),
-        (Parcel("A", last_event_code="EVJIC", summary_ok=True), "in_transit"),
+        (Parcel("A", last_event_code="EVAIP", summary_ok=True), "expected"),
+        (Parcel("A", last_event_code="EVJIC", summary_ok=True), "in_customs"),
         (Parcel("A", last_event_code="EVPLA", summary_ok=True), "ready_for_collection"),
         (Parcel("A", last_event_code="EVPLC", summary_ok=True), "collected"),
-        (Parcel("A", last_event_code="EVNDA", summary_ok=True), "in_transit"),
+        (Parcel("A", last_event_code="EVKNR", summary_ok=True), "delivery_attempted"),
+        (Parcel("A", last_event_code="EVNDA", summary_ok=True), "delivery_attempted"),
         (
             Parcel(
                 "A",
@@ -182,8 +187,53 @@ async def test_legacy_entities_pruned(
             "collected",
         ),
         (
-            Parcel("A", status_category="In Customs", summary_ok=True),
-            "in_transit",
+            Parcel("A", status_category="We're expecting it", summary_ok=True),
+            "expected",
+        ),
+        (
+            Parcel("A", status_category="We\u2019re expecting it", summary_ok=True),
+            "expected",
+        ),
+        (Parcel("A", status_category="In Customs", summary_ok=True), "in_customs"),
+        (
+            Parcel("A", status_category="Delivery Attempted", summary_ok=True),
+            "delivery_attempted",
+        ),
+        (Parcel("A", status_category="Pending", summary_ok=True), "in_transit"),
+        (Parcel("A", status_category="Left the UK", summary_ok=True), "in_transit"),
+        (Parcel("A", status_category="No Status", summary_ok=True), None),
+        # The event code wins over an ordinary category...
+        (
+            Parcel(
+                "A",
+                last_event_code="EVGPD",
+                status_category="Ready for Delivery",
+                summary_ok=True,
+            ),
+            "out_for_delivery",
+        ),
+        # ...but not over one that says something went wrong.
+        (
+            Parcel(
+                "A",
+                last_event_code="EVKOP",
+                status_category="Returned to Sender",
+                summary_ok=True,
+            ),
+            "returned_to_sender",
+        ),
+        (
+            Parcel("A", status_category="Duplicate Identified", summary_ok=True),
+            "problem",
+        ),
+        (
+            Parcel(
+                "A",
+                last_event_code="EVORI",
+                status_category="Restricted or Prohibited Contents",
+                summary_ok=True,
+            ),
+            "problem",
         ),
     ],
 )

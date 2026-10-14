@@ -17,6 +17,8 @@ from .const import (
     DOMAIN,
     EVENT_STATES,
     PARCEL_STATES,
+    PRIORITY_CATEGORY_STATES,
+    STATE_DELIVERY_ATTEMPTED,
     STATE_IN_TRANSIT,
     STATE_OUT_FOR_DELIVERY,
     STATE_READY_FOR_COLLECTION,
@@ -30,14 +32,18 @@ TRACKED_PARCELS_KEY = "tracked_parcels"
 
 
 def parcel_state(parcel: Parcel) -> str | None:
-    """Map a parcel's latest tracking event to a sensor state."""
+    """Map a parcel's status category and latest tracking event to a sensor state."""
     if not parcel.summary_ok:
         return None
+    # Match "We're expecting it" whichever apostrophe it comes with.
+    category = (parcel.status_category or "").lower().replace("\u2019", "'")
+    if state := PRIORITY_CATEGORY_STATES.get(category):
+        return state
     if parcel.last_event_code and (
         state := EVENT_STATES.get(parcel.last_event_code.upper())
     ):
         return state
-    return CATEGORY_STATES.get((parcel.status_category or "").lower(), STATE_IN_TRANSIT)
+    return CATEGORY_STATES.get(category, STATE_IN_TRANSIT)
 
 
 async def async_setup_entry(
@@ -164,21 +170,19 @@ class RoyalMailTrackedParcelsSensor(RoyalMailEntity, SensorEntity):
     @property
     @override
     def extra_state_attributes(self) -> dict[str, Any]:
-        """List the tracked items, and those due today or waiting to be collected."""
+        """List the tracked items, and those that need you today."""
         states = {
             tracking_number: parcel_state(parcel)
             for tracking_number, parcel in self.coordinator.data.items()
         }
         return {
             "parcels": list(states),
-            STATE_OUT_FOR_DELIVERY: [
-                number
-                for number, state in states.items()
-                if state == STATE_OUT_FOR_DELIVERY
-            ],
-            STATE_READY_FOR_COLLECTION: [
-                number
-                for number, state in states.items()
-                if state == STATE_READY_FOR_COLLECTION
-            ],
+            **{
+                wanted: [number for number, state in states.items() if state == wanted]
+                for wanted in (
+                    STATE_OUT_FOR_DELIVERY,
+                    STATE_DELIVERY_ATTEMPTED,
+                    STATE_READY_FOR_COLLECTION,
+                )
+            },
         }

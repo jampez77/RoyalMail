@@ -4,11 +4,16 @@
       "parcel": {
         "default": "mdi:package-variant-closed",
         "state": {
+          "expected": "mdi:calendar-clock",
           "in_transit": "mdi:transit-connection-variant",
+          "in_customs": "mdi:passport",
           "out_for_delivery": "mdi:truck-delivery-outline",
+          "delivery_attempted": "mdi:truck-alert-outline",
           "ready_for_collection": "mdi:store-clock-outline",
           "delivered": "mdi:package-variant-closed-check",
-          "collected": "mdi:human-dolly"
+          "collected": "mdi:human-dolly",
+          "returned_to_sender": "mdi:arrow-u-left-top",
+          "problem": "mdi:alert-circle-outline"
         }
       },
       "tracked_parcels": {

@@ -38,11 +38,16 @@
     "sensor": {
       "parcel": {
         "state": {
+          "expected": "Expected",
           "in_transit": "In transit",
+          "in_customs": "In customs",
           "out_for_delivery": "Out for delivery",
+          "delivery_attempted": "Delivery attempted",
           "ready_for_collection": "Ready for collection",
           "delivered": "Delivered",
-          "collected": "Collected"
+          "collected": "Collected",
+          "returned_to_sender": "Returned to sender",
+          "problem": "Problem"
         },
         "state_attributes": {
           "tracking_number": {
@@ -106,6 +111,9 @@
           },
           "out_for_delivery": {
             "name": "Out for delivery"
+          },
+          "delivery_attempted": {
+            "name": "Delivery attempted"
           },
           "ready_for_collection": {
             "name": "Ready for collection"
