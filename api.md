@@ -222,6 +222,8 @@ Fields can be missing: `destinationCountry*` isn't always sent, and `greenCreden
 
 The integration reads the product, countries, latest event, status, summary line, carrier, sender and carbon footprint. It ignores the IDs, `statusHelpText` and `detailedStatusCategory` (so far the same as `statusCategory`).
 
+`links.events.href` doesn't always use the item's reference. For some items it names another ID Royal Mail has for the item, such as a 21-character `1B…` ID or a short hexadecimal one.
+
 An item's page on royalmail.com is `https://www.royalmail.com/track-your-item#/tracking-results/<reference>`.
 
 A 400 or 401 response means the history `jwt` expired: fetch the history again and retry.
@@ -232,7 +234,7 @@ A 400 or 401 response means the history `jwt` expired: fetch the history again a
 
 The full tracking history of one item. Looking an item up while signed in also adds it to the account's tracked items, which is how the **Track your item** action works.
 
-This response hasn't been captured from the web API yet. The app API's equivalent, `/mailpieces/v3.1/{reference}/events`, returned the item's `summary` as above, plus an `events` list, newest first:
+This response hasn't been captured from the web API, because Royal Mail only answers it after a captcha (see [Captcha](#captcha)). The app API's equivalent, `/mailpieces/v3.1/{reference}/events`, returned the item's `summary` as above, plus an `events` list, newest first:
 
 ```json
 {
@@ -272,12 +274,21 @@ Removes one or more items, separated by commas, from the account's tracked items
 
 ### Captcha
 
-The website treats tracking a new item and removing items as protected by a captcha. It sends one of:
+Looking an item up (events) needs a captcha, and removing items probably does too. With those requests the website sends one of:
 
 - `x-rmg-api-session`: a token valid for about two minutes. Web API responses can carry it as a response header. The website stores the latest one and sends it back on the next requests, and so does the integration.
 - `x-rmg-recaptcha`: an hCaptcha token, after the user solves a captcha.
 
-On 2026-10-12 the history and summary requests worked without either. Whether events and removal need one hasn't been tested yet. If Royal Mail answers 401 or 403 with a body that mentions a captcha or the API session, the integration reports that the action needs a captcha.
+The track page runs an invisible hCaptcha (`appText.hCaptcha` in the runtime config, with `widget_size: invisible` and a site key) when you open an item. On 2026-10-14 it showed an image challenge.
+
+Tested on 2026-10-14, signed in with a fresh JWT:
+
+- History and summary worked without either header.
+- Events without either header was never answered, even for items the account already tracked. Over HTTP/2 the server reset the stream (curl error 92). Over HTTP/1.1 it sent nothing until the request timed out (curl error 28).
+- Removal wasn't tested, because it changes the account.
+- Whether the `x-rmg-api-session` that comes back after a solved captcha lets later lookups through without another one hasn't been tested.
+
+The integration reports that an action needs a captcha in two cases: Royal Mail answers 401 or 403 with a body that mentions a captcha or the API session, or it drops a lookup in one of the two ways above.
 
 ### Errors
 
@@ -309,6 +320,7 @@ How the integration reacts:
 | --- | --- | --- |
 | 401 or 403 mentioning `client id` or `not registered to plan` | The client ID changed | Fetch the config again and retry once |
 | 401 or 403 mentioning a captcha or API session | A captcha is needed | Report it |
+| No answer to a lookup: stream reset or timeout | A captcha is needed | Report it |
 | Other 401 | The JWT expired | Get a new JWT and retry once |
 | 429 | Too many requests | Wait for the next update |
 

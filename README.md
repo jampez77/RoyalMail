@@ -128,6 +128,8 @@ The state comes from Royal Mail's status category and the latest event code. [Ev
 
 Looks an item up while signed in, which adds it to the account's tracked items, the same as tracking it on royalmail.com. Its sensor appears straight away.
 
+**This currently fails.** Royal Mail wants a captcha before it looks an item up, which Home Assistant can't solve. When tested on 2026-10-14, every lookup failed with *Royal Mail wants a captcha*. Until that changes, track new items on royalmail.com or in the app; their sensors appear within 15 minutes.
+
 | Field | Required | Description |
 | --- | --- | --- |
 | `config_entry_id` | With several accounts | The account to add the item to. In the UI, pick it from the list. |
@@ -231,7 +233,7 @@ content: >
 
 - **This isn't an official API.** It talks to the same endpoints as royalmail.com and can break when Royal Mail changes the website.
 - **Sign-ins are rate limited.** Royal Mail refuses sign-ins for a while after a few in quick succession. The integration keeps its session to avoid signing in, and backs off when refused, but setting the integration up, re-authenticating and restarting repeatedly can still trip it. With several accounts, it signs them in one at a time, a minute apart, so after a restart with expired sessions the last account can take a few minutes to come back.
-- **Actions may need a captcha.** royalmail.com sometimes asks for a captcha before it tracks or removes an item. Home Assistant can't solve one, so the action fails and says so. Track or remove the item on royalmail.com or in the app instead; the sensor follows within 15 minutes.
+- **Tracking an item needs a captcha.** royalmail.com wants a solved captcha before it looks an item up. Home Assistant can't solve one, so the **Track your item** action fails and says so. Removing an item might need one too; that hasn't been tested. Track or remove the item on royalmail.com or in the app instead; the sensor follows within 15 minutes.
 - **Only the account's tracked items appear.** Items addressed to you that nobody tracked with your account don't show up.
 - **Fixed polling interval.** Updates happen every 15 minutes. To update sooner, call `homeassistant.update_entity` on any Royal Mail sensor.
 - **It doesn't use Home Assistant's shared web session.** royalmail.com sits behind a bot filter that only lets browsers through, so the integration uses [curl_cffi](https://github.com/lexiforest/curl_cffi) to connect the way Chrome does.
@@ -252,7 +254,11 @@ Two entries sign in to the same Royal Mail account, for example under an old and
 
 **An item is missing**
 
-Sign in to royalmail.com and open [Track your item](https://www.royalmail.com/track-your-item). Only items listed under *Recently tracked items* appear in Home Assistant. Track it there, or use the **Track your item** action.
+Sign in to royalmail.com and open [Track your item](https://www.royalmail.com/track-your-item). Only items listed under *Recently tracked items* appear in Home Assistant. Track it there or in the app.
+
+**"Royal Mail wants a captcha before it accepts this from Home Assistant"**
+
+Royal Mail only looks items up for someone who has solved a captcha, which Home Assistant can't do. Track or remove the item on royalmail.com or in the app instead.
 
 **A sensor is `unknown`**
 
