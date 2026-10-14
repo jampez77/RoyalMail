@@ -121,6 +121,14 @@ The state comes from Royal Mail's status category and the latest event code. [Ev
 | `summary_line` | Royal Mail's one-line summary. |
 | `co2e_grams` | Royal Mail's estimate of the item's carbon footprint, in grams of CO2e. Empty until Royal Mail has worked it out. |
 | `tracking_url` | The item's page on royalmail.com, handy for notifications. |
+| `events` | The tracking events the integration has seen for the item, newest first. Each has a `code`, `event`, `time` and `location`, like the `last_event` attributes. |
+
+Royal Mail only shows Home Assistant each item's latest event, because the full list of events needs a captcha (see [Known limitations](#known-limitations)). So `events` builds up from the latest event at each update:
+
+- It starts with the event the item had when its sensor appeared. Earlier events aren't included.
+- If Royal Mail records two events between updates, only the newer one is kept. Events while Home Assistant is off are missed the same way.
+- It's kept across restarts and holds up to 50 events, more than an item normally gets.
+- It isn't saved in the recorder's history, to keep the database small. The `last_event` attributes are recorded as usual.
 
 ## Actions
 
@@ -229,11 +237,24 @@ content: >
   {% endfor %}
 ```
 
+### Show an item's tracking events
+
+```yaml
+type: markdown
+title: Kettle
+content: >
+  {% for scan in state_attr('sensor.123456789_kettle', 'events') or [] %}
+  - **{{ scan.time | as_timestamp | timestamp_custom('%a %-d %b, %H:%M')
+         if scan.time else 'Time unknown' }}**:
+    {{ scan.event }}{{ ', ' ~ scan.location if scan.location else '' }}
+  {% endfor %}
+```
+
 ## Known limitations
 
 - **This isn't an official API.** It talks to the same endpoints as royalmail.com and can break when Royal Mail changes the website.
 - **Sign-ins are rate limited.** Royal Mail refuses sign-ins for a while after a few in quick succession. The integration keeps its session to avoid signing in, and backs off when refused, but setting the integration up, re-authenticating and restarting repeatedly can still trip it. With several accounts, it signs them in one at a time, a minute apart, so after a restart with expired sessions the last account can take a few minutes to come back.
-- **Tracking an item needs a captcha.** royalmail.com wants a solved captcha before it looks an item up. Home Assistant can't solve one, so the **Track your item** action fails and says so. Removing an item might need one too; that hasn't been tested. Track or remove the item on royalmail.com or in the app instead; the sensor follows within 15 minutes.
+- **Tracking an item needs a captcha.** royalmail.com wants a solved captcha before it looks an item up. Home Assistant can't solve one, so the **Track your item** action fails and says so. Removing an item might need one too; that hasn't been tested. Track or remove the item on royalmail.com or in the app instead; the sensor follows within 15 minutes. Looking an item up is also how royalmail.com gets the item's full list of events, so the integration only sees the latest one each time it updates and builds up the [`events` attribute](#one-sensor-per-item) from those.
 - **Only the account's tracked items appear.** Items addressed to you that nobody tracked with your account don't show up.
 - **Fixed polling interval.** Updates happen every 15 minutes. To update sooner, call `homeassistant.update_entity` on any Royal Mail sensor.
 - **It doesn't use Home Assistant's shared web session.** royalmail.com sits behind a bot filter that only lets browsers through, so the integration uses [curl_cffi](https://github.com/lexiforest/curl_cffi) to connect the way Chrome does.
