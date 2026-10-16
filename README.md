@@ -315,7 +315,7 @@ Version 2026.10.0 replaced the Royal Mail app API, which had stopped accepting s
 
 - **Home Assistant 2026.10.0 or newer is required.**
 - **Parcel states are fixed values** such as `in_transit` or `delivered`, not Royal Mail's event text. The text is in the `last_event` attribute. Update automations that compare the state with text like `Delivered by`.
-- **Parcel attributes changed.** The long list of raw API fields, such as `summary_productName` and `events`, is replaced by the attributes listed under [Entities](#entities).
+- **Parcel attributes changed.** The long list of raw API fields, such as `summary_productName`, is replaced by the attributes listed under [Entities](#entities). `events` is still there, but each event now has a `code`, `event`, `time` and `location` instead of Royal Mail's `eventCode`, `eventName` and so on, and the list only holds the events the integration has seen. [One sensor per item](#one-sensor-per-item) explains why.
 - **`available_for_collection` is now `ready_for_collection`** on the tracked parcels sensor.
 - **Accounts are recognised by their Royal Mail account number** instead of the email address. Home Assistant switches over the first time the integration starts, keeping the entity IDs, the device and anything you set on them, such as its area.
 - **New items get new-style entity IDs** based on the account number and alias, such as `sensor.123456789_kettle`, instead of `sensor.royalmail_parcel_ab123456789gb`. Existing entities keep theirs.
