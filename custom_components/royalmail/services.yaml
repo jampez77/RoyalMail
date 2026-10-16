@@ -1,12 +1,22 @@
 track_your_item:
   fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: royalmail
     reference_number:
       required: true
+      example: "AB123456789GB"
       selector:
         text:
 stop_tracking_item:
   fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: royalmail
     reference_number:
       required: true
+      example: "AB123456789GB"
       selector:
         text:

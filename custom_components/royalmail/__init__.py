@@ -1,78 +1,111 @@
 """The Royal Mail integration."""
 
-from __future__ import annotations
+from typing import Any, Final
 
-import asyncio
-
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-import homeassistant.helpers.config_validation as cv
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryError
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+)
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN
-from .services import async_cleanup_services, async_setup_services
+from .api import RoyalMailWebClient
+from .const import CONF_SESSION, DOMAIN, LOGGER
+from .coordinator import (
+    RoyalMailConfigEntry,
+    RoyalMailCoordinator,
+    async_get_login_throttle,
+)
+from .entity import account_id
+from .services import async_setup_services
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS: Final = [Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up platform from a ConfigEntry."""
-    hass.data.setdefault(DOMAIN, {})
-    hass_data = dict(entry.data)
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the Royal Mail actions."""
+    async_setup_services(hass)
+    return True
 
-    # Register services when the first config entry is added
-    if not hass.data[DOMAIN]:
-        async_setup_services(hass)
 
-    # Registers update listener to update config entry when options are updated.
-    unsub_options_update_listener = entry.add_update_listener(options_update_listener)
-
-    # Use async_on_unload to register the listener without storing it in entry data
-    entry.async_on_unload(unsub_options_update_listener)
-
-    hass.data[DOMAIN][entry.entry_id] = hass_data
-    # Forward the setup to each platform.
+async def async_setup_entry(hass: HomeAssistant, entry: RoyalMailConfigEntry) -> bool:
+    """Set up Royal Mail from a config entry."""
+    client = RoyalMailWebClient(
+        entry.data[CONF_USERNAME],
+        entry.data[CONF_PASSWORD],
+        entry.data.get(CONF_SESSION),
+        login_throttle=async_get_login_throttle(hass),
+    )
+    entry.async_on_unload(client.async_close)
+    coordinator = RoyalMailCoordinator(hass, entry, client)
+    await coordinator.async_config_entry_first_refresh()
+    # The account number comes from the token, which the refresh made sure of.
+    await _async_adopt_account_id(hass, entry, client.user_id)
+    entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def options_update_listener(hass: HomeAssistant, config_entry: ConfigEntry):
-    """Handle options update."""
-    entry_state = hass.config_entries.async_get_entry(config_entry.entry_id).state
-
-    # Proceed only if the entry is in a valid state (loaded, etc.)
-    if entry_state not in (
-        ConfigEntryState.SETUP_IN_PROGRESS,
-        ConfigEntryState.SETUP_RETRY,
-    ):
-        await hass.config_entries.async_reload(config_entry.entry_id)
-
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: RoyalMailConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = all(
-        await asyncio.gather(
-            *[
-                hass.config_entries.async_forward_entry_unload(entry, platform)
-                for platform in PLATFORMS
-            ]
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: RoyalMailConfigEntry) -> bool:
+    """Migrate entries created by earlier versions."""
+    if entry.version > 1:
+        return False
+    if entry.minor_version < 2:
+        # 1.1 kept app API tokens that no longer work; only the login is reused.
+        username: str = entry.data[CONF_USERNAME]
+        hass.config_entries.async_update_entry(
+            entry,
+            data={CONF_USERNAME: username, CONF_PASSWORD: entry.data[CONF_PASSWORD]},
+            unique_id=entry.unique_id or username,
+            minor_version=2,
         )
-    )
-
-    # Remove config entry from domain.
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    # If this was the last config entry, unregister the services
-    if not hass.data[DOMAIN]:
-        async_cleanup_services(hass)
-
-    return unload_ok
-
-
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the Royal Mail component from yaml configuration."""
-    hass.data.setdefault(DOMAIN, {})
+    LOGGER.debug("Migrated to version %s.%s", entry.version, entry.minor_version)
     return True
+
+
+async def _async_adopt_account_id(
+    hass: HomeAssistant, entry: RoyalMailConfigEntry, user_id: str
+) -> None:
+    """Identify an entry by its Royal Mail account number.
+
+    Earlier versions used the email address. The entities and the device keep
+    their registry IDs, so entity IDs, history and customisations carry over.
+    """
+    old_id = account_id(entry)
+    if old_id == user_id:
+        return
+    if other := hass.config_entries.async_entry_for_domain_unique_id(DOMAIN, user_id):
+        raise ConfigEntryError(
+            translation_domain=DOMAIN,
+            translation_key="duplicate_account",
+            translation_placeholders={"title": other.title},
+        )
+    old_prefix = f"{DOMAIN}-{old_id}-".lower()
+    new_prefix = f"{DOMAIN}-{user_id}-".lower()
+
+    @callback
+    def _new_unique_id(entity: er.RegistryEntry) -> dict[str, Any] | None:
+        if not entity.unique_id.startswith(old_prefix):
+            return None
+        key = entity.unique_id.removeprefix(old_prefix)
+        return {"new_unique_id": new_prefix + key}
+
+    await er.async_migrate_entries(hass, entry.entry_id, _new_unique_id)
+    device_registry = dr.async_get(hass)
+    if device := device_registry.async_get_device_by_identifier(
+        (DOMAIN, old_id), entry.entry_id
+    ):
+        device_registry.async_update_device(
+            device.id, new_identifiers={(DOMAIN, user_id)}
+        )
+    hass.config_entries.async_update_entry(entry, unique_id=user_id)
+    LOGGER.debug("Now identifying %s by its Royal Mail account number", entry.title)
